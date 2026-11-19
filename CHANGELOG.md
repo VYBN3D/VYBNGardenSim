@@ -5,6 +5,24 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v25 — hash jars, sell/send confirm menus, bigger OTA buttons
+- Hash is now part of the stash list: the STASH page lists flower jars and
+  hash units per strain on the same rows (jars grade | hash grade)
+- Hash jars are sendable: the send-supplies screen has FLOWER JAR and
+  HASH JAR cards side by side (own strain arrows), and recipients get
+  "Received a %s hash jar"
+- Market sell cards open a strain submenu (3 big rows per page, < >
+  paging) instead of the skinny top shelf bar; each row shows strain,
+  count and per-unit price
+- One-tap confirmation before anything sells (ARE YOU SURE? with
+  YES, SELL IT / BACK) and before any product is sent (SEND IT? /
+  BACK) — no more accidental sales or gifts
+- WiFi / UPDATES page: YOUR BUILD shrunk to a small text line, buttons
+  enlarged; Options menu: RESET GAME and UPDATE are now two big
+  side-by-side card buttons
+- v24/v23 catalog tweaks carry over (owned-pack pill badge, send-screen
+  arrows cycle all unlocked strains, money keypad rebuilt)
+
 ## v24 — seed pack pill badge
 - Seed catalog: every unlocked card gets a pill badge showing how many
   4-packs you hold ("x1", "x2" — gold when stocked, gray "x0" when not)

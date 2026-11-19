@@ -278,7 +278,6 @@ bool flowerHarvestAnimationRequested = false;
 bool flowerTrimAnimationRequested = false;
 bool moldAnimationRequested = false;
 bool marketGearMode = false;
-uint8_t marketSellStrain = 0;   // strain picked on the market sell shelf
 bool stashGearMode = false;
 
 // Defoliation windows, over-defoliation and overwatering (per harvest).
@@ -411,7 +410,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v24"
+#define FW_VERSION "v25"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -876,6 +875,14 @@ uint8_t seedsByStrain[STRAIN_COUNT] = {0};
 uint8_t plantStrain = 0;            // strain chosen on the planting screen
 uint8_t sendSeedStrain = 0;         // strain picked in the nearby send-supplies flow
 uint8_t sendStashStrain = 0;        // stash-jar strain picked on the same screen
+uint8_t sendHashStrain = 0;         // hash-jar strain picked on the same screen
+uint8_t sendConfirmItem = 0;        // product armed for the SEND IT? panel
+uint8_t marketSellStrain = 0;   // strain picked in the sell submenu
+uint8_t marketSellMode = 0;     // 0 none, 1/2 flower sell-1/sell-all, 3/4 hash
+uint8_t marketSellPage = 0;     // submenu shows 3 strains per page
+uint8_t marketSellCount = 0;    // stocked strains for the active mode
+uint8_t marketSellList[STRAIN_COUNT];
+bool marketSellConfirm = false; // one-tap ARE YOU SURE? before selling
 
 uint16_t totalSeeds() {
   uint16_t t = 0;
@@ -965,6 +972,15 @@ uint8_t nextCatalogStrain(uint8_t from, int dir) {
 }
 
 uint16_t hashByStrain[STRAIN_COUNT] = {0};
+
+// Next strain (direction) with hash units actually pressed.
+uint8_t nextHashStrain(uint8_t from, int dir) {
+  for (uint8_t step = 0; step < STRAIN_COUNT; ++step) {
+    from = (from + STRAIN_COUNT + dir) % STRAIN_COUNT;
+    if (hashByStrain[from]) return from;
+  }
+  return from;
+}
 // Harvest quality: the plant's vigor when harvested grades the batch and sets
 // what it sells for. Quality (0-100 = vigor at harvest) is stored per stash
 // jar and weighted-blended when batches of the same jar merge. Jars saved by
@@ -1526,6 +1542,11 @@ void applyNearbyGift(uint8_t item, uint8_t strain) {
       strain = min((int)strain, (int)STRAIN_COUNT - 1);
       stashByStrain[strain] = min(65535, (int)stashByStrain[strain] + 1);
       snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Received a %s jar", strainNames[strain]);
+      break;
+    case 6:
+      strain = min((int)strain, (int)STRAIN_COUNT - 1);
+      hashByStrain[strain] = min(65535, (int)hashByStrain[strain] + 1);
+      snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Received a %s hash jar", strainNames[strain]);
       break;
     default: return;
   }
@@ -2772,42 +2793,26 @@ void drawMarketCard(int x, int y, const char *label, const char *value, bool ena
 void drawMarketPage() {
   drawPageTitle("VIRTUAL MARKET",
                 marketGearMode ? "Tap a card to buy gear - smoke buttons below"
-                               : "Pick a strain on the shelf, then tap to sell");
+                               : "Tap a sell card, pick a strain, then confirm");
   drawButton(12, 72, 144, 19, "SELL", marketGearMode ? PANEL_LIGHT : ACCENT_DARK);
   drawButton(164, 72, 144, 19, "GEAR", marketGearMode ? ACCENT_DARK : PANEL_LIGHT);
   char units[24];
   if (!marketGearMode) {
-    // Land the shelf on a strain you actually hold (like the planting screen).
-    if (stashTotal() && !stashByStrain[marketSellStrain])
-      marketSellStrain = nextStashStrain(marketSellStrain, 1);
-    // Shelf row: < > cycle the strains that have jars on the shelf.
-    game.fillRoundRect(5, 94, 310, 20, 6, PANEL);
-    game.drawRoundRect(5, 94, 310, 20, 6, PANEL_LIGHT);
-    drawButton(11, 96, 26, 16, "<", PANEL_LIGHT);
-    drawButton(273, 96, 26, 16, ">", PANEL_LIGHT);
-    game.setTextColor(stashTotal() ? TEXT_MAIN : TEXT_DIM, PANEL);
-    char shelf[40];
-    if (stashTotal())
-      snprintf(shelf, sizeof(shelf), "%s  x%u", strainNames[marketSellStrain],
-               stashByStrain[marketSellStrain]);
-    else
-      strlcpy(shelf, "STASH EMPTY", sizeof(shelf));
-    game.drawCentreString(shelf, 160, 99, 1);
-    char units[28];
-    if (stashByStrain[marketSellStrain])
-      snprintf(units, sizeof(units), "x%u - $%u each", stashByStrain[marketSellStrain],
-               flowerUnitPrice(marketSellStrain));
-    else
-      strlcpy(units, "-", sizeof(units));
-    drawMarketCard(5, 118, "SELL 1 FLOWER", units, stashByStrain[marketSellStrain] > 0);
-    snprintf(units, sizeof(units), "x%u", stashByStrain[marketSellStrain]);
-    drawMarketCard(163, 118, "SELL ALL", units, stashByStrain[marketSellStrain] > 0);
+    // Sell cards open a strain submenu (big tappable rows); the submenu asks
+    // ARE YOU SURE? before anything is actually sold.
+    char flowerPrice[24];
+    stashPriceText(flowerPrice, sizeof(flowerPrice));
+    snprintf(units, sizeof(units), "x%u - %s", stashTotal(), flowerPrice);
+    drawMarketCard(5, 94, "SELL 1 FLOWER", units, stashTotal() > 0);
+    snprintf(units, sizeof(units), "x%u - %s", stashTotal(), flowerPrice);
+    drawMarketCard(163, 94, "SELL ALL FLOWER", units, stashTotal() > 0);
     char hashPrice[24];
     hashPriceText(hashPrice, sizeof(hashPrice));
     snprintf(units, sizeof(units), "x%u - %s", hashTotal(), hashPrice);
-    drawMarketCard(5, 160, "SELL 1 HASH", units, hashRoomUnlocked && hashTotal() > 0);
+    drawMarketCard(5, 136, "SELL 1 HASH", units, hashRoomUnlocked && hashTotal() > 0);
     snprintf(units, sizeof(units), "x%u - %s", hashTotal(), hashPrice);
-    drawMarketCard(163, 160, "SELL ALL HASH", units, hashRoomUnlocked && hashTotal() > 0);
+    drawMarketCard(163, 136, "SELL ALL HASH", units, hashRoomUnlocked && hashTotal() > 0);
+    if (marketSellMode) drawSellStrainModal();
     return;
   }
 
@@ -2843,20 +2848,28 @@ void drawStashPage() {
     game.drawRightString(value, 302, y, 1);
     game.drawFastHLine(16, y + 10, 288, 0x3187);
   }
-  // Stash jars by strain: strain name, unit count and quality grade.
+  // Jars and hash by strain: flower jars + hash units share each row.
   game.setTextColor(TEXT_DIM, BG);
-  game.drawString("STASH JARS BY STRAIN", 18, 124, 1);
+  game.drawString("STASH BY STRAIN - JARS / HASH", 18, 124, 1);
   int shown = 0;
   int extra = 0;
   for (uint8_t i = 0; i < STRAIN_COUNT; ++i) {
-    if (!stashByStrain[i]) continue;
+    if (!stashByStrain[i] && !hashByStrain[i]) continue;
     if (shown >= 4) { ++extra; continue; }
     int y = 136 + shown * 12;
     game.setTextColor(TEXT_MAIN, BG);
     game.drawString(strainNames[i], 18, y, 1);
-    char row[30];
-    snprintf(row, sizeof(row), "x%u - %s", stashByStrain[i],
-             gradeName(sellGradeForQuality(stashQualityByStrain[i])));
+    char row[44];
+    if (stashByStrain[i] && hashByStrain[i])
+      snprintf(row, sizeof(row), "x%u %s | x%u h%s", stashByStrain[i],
+               gradeName(sellGradeForQuality(stashQualityByStrain[i])),
+               hashByStrain[i], gradeName(sellGradeForQuality(hashQualityByStrain[i])));
+    else if (stashByStrain[i])
+      snprintf(row, sizeof(row), "x%u %s", stashByStrain[i],
+               gradeName(sellGradeForQuality(stashQualityByStrain[i])));
+    else
+      snprintf(row, sizeof(row), "x%u h%s", hashByStrain[i],
+               gradeName(sellGradeForQuality(hashQualityByStrain[i])));
     game.setTextColor(GOLD, BG);
     game.drawRightString(row, 302, y, 1);
     game.drawFastHLine(16, y + 10, 288, 0x3187);
@@ -2864,7 +2877,7 @@ void drawStashPage() {
   }
   if (shown == 0) {
     game.setTextColor(TEXT_DIM, BG);
-    game.drawCentreString("No jars yet - trim and stash your harvest", 160, 146, 1);
+    game.drawCentreString("Nothing stashed - trim flowers or press hash", 160, 146, 1);
   } else if (extra) {
     game.setTextColor(TEXT_DIM, BG);
     char more[24];
@@ -3117,24 +3130,23 @@ static void otaInstallUpdate() {
 static void drawOtaPage() {
   drawPageTitle("WIFI / UPDATES", "Gear icon exits");
   char line[48];
-  OTA_GFX.fillRoundRect(10, 72, 300, 24, 6, PANEL);
-  OTA_GFX.drawRoundRect(10, 72, 300, 24, 6, PANEL_LIGHT);
+  // Small build line: no card, just tiny text to leave room for big buttons.
+  OTA_GFX.setTextColor(TEXT_DIM, BG);
   snprintf(line, sizeof(line), "YOUR BUILD: %s - %s", FW_VERSION_FULL, FW_DATE);
-  OTA_GFX.setTextColor(TEXT_MAIN, PANEL);
-  OTA_GFX.drawCentreString(line, 160, 79, 1);
-  OTA_GFX.fillRoundRect(10, 100, 300, 24, 6, PANEL);
-  OTA_GFX.drawRoundRect(10, 100, 300, 24, 6, PANEL_LIGHT);
+  OTA_GFX.drawCentreString(line, 160, 72, 1);
+  OTA_GFX.fillRoundRect(10, 82, 300, 22, 6, PANEL);
+  OTA_GFX.drawRoundRect(10, 82, 300, 22, 6, PANEL_LIGHT);
   snprintf(line, sizeof(line), "WIFI: %s", wifiConnected() ? WiFi.SSID().c_str()
            : wifiSsid[0] ? wifiSsid : "NOT SET UP");
   OTA_GFX.setTextColor(TEXT_MAIN, PANEL);
-  OTA_GFX.drawCentreString(line, 160, 107, 1);
-  drawButton(10, 130, 145, 26, "WIFI LOGIN", PANEL_LIGHT);
-  drawButton(165, 130, 145, 26, "CHECK UPDATES", PANEL_LIGHT);
+  OTA_GFX.drawCentreString(line, 160, 88, 1);
+  drawButton(5, 108, 152, 34, "WIFI LOGIN", PANEL_LIGHT);
+  drawButton(163, 108, 152, 34, "CHECK UPDATES", PANEL_LIGHT);
   OTA_GFX.setTextColor(otaLatest[0] && strcmp(otaLatest, FW_VERSION) ? GOLD : TEXT_DIM, BG);
-  OTA_GFX.drawCentreString(otaStatus, 160, 166, 1);
+  OTA_GFX.drawCentreString(otaStatus, 160, 150, 1);
   if (otaLatest[0] && strcmp(otaLatest, FW_VERSION)) {
     snprintf(line, sizeof(line), "INSTALL %s AND REBOOT", otaLatest);
-    drawButton(10, 176, 300, 28, line, ACCENT_DARK, TFT_WHITE);
+    drawButton(5, 160, 310, 36, line, ACCENT_DARK, TFT_WHITE);
   }
 }
 
@@ -3336,17 +3348,17 @@ static void touchWifiLogin(int x, int y) {
 }
 
 static void touchOtaPage(int x, int y) {
-  if (y >= 130 && y < 156 && x < 160) {
+  if (y >= 108 && y < 142 && x < 160) {
     wifiLoginStage = 0;
     wifiSsidEdit[0] = '\0';
     wifiPassEdit[0] = '\0';
     page = WIFI_LOGIN;
     wifiScanStart();
     render();
-  } else if (y >= 130 && y < 156) {
+  } else if (y >= 108 && y < 142) {
     otaCheckUpdate();
     render();
-  } else if (y >= 176 && y < 204 && x >= 10 &&
+  } else if (y >= 160 && y < 196 &&
              otaLatest[0] && strcmp(otaLatest, FW_VERSION)) {
     otaInstallUpdate();
     render();
@@ -3484,12 +3496,13 @@ void drawOptionsPage() {
   drawOptionsCard(163, 64, 152, 42, "MUSIC", volLabel, PANEL);
   drawOptionsCard(5, 110, 152, 42, "FAST HARVEST", "TAP", ACCENT_DARK);
   drawOptionsCard(163, 110, 152, 42, "CHEATS", "TAP", PANEL_LIGHT);
-  // Wide gap between RESET GAME and UPDATE so UPDATE taps never hit reset.
-  // Must stay above the nav bar (NAV_Y = 207) or the nav touch handler
-  // steals the taps (that was the STASH-jump bug).
-  drawButton(5, 156, 310, 16, resetArmed ? "TAP AGAIN TO RESET GAME" : "RESET GAME",
-             resetArmed ? RED : PANEL_LIGHT);
-  drawButton(5, 180, 310, 26, "UPDATE - WIFI / OTA", PANEL_LIGHT);
+  // Bottom row: two big card buttons side by side (the whole card is the
+  // tap target). Must stay above the nav bar (NAV_Y = 207) or the nav touch
+  // handler steals the taps (that was the STASH-jump bug).
+  drawOptionsCard(5, 158, 152, 46, "RESET GAME",
+                  resetArmed ? "TAP AGAIN!" : "ERASES SAVE",
+                  resetArmed ? RED : PANEL_LIGHT);
+  drawOptionsCard(163, 158, 152, 46, "UPDATE", "WIFI / OTA", PANEL_LIGHT);
 }
 
 // Grower menu, opened from the Curaleaf leaf: your grower as an ID card.
@@ -3731,18 +3744,30 @@ void drawNearbyPage() {
              seedsByStrain[sendSeedStrain]);
     game.setTextColor(seedsReady ? GOLD : TEXT_DIM, PANEL);
     game.drawRightString(seedLine, 306, 81, 1);
-    // Full-width stash-jar card: gift a trimmed jar of any strain you hold.
+    // Flower jar + hash jar pickers share the second row; card taps arm the
+    // SEND IT? confirmation panel instead of gifting right away.
     bool stashReady = stashByStrain[sendStashStrain] > 0 && selectedNearbyPeerValid();
-    game.fillRoundRect(5, 108, 310, 34, 5, PANEL);
-    game.drawRoundRect(5, 108, 310, 34, 5, stashReady ? ACCENT : PANEL_LIGHT);
+    bool hashReady = hashByStrain[sendHashStrain] > 0 && selectedNearbyPeerValid();
+    game.fillRoundRect(5, 108, 152, 34, 5, PANEL);
+    game.drawRoundRect(5, 108, 152, 34, 5, stashReady ? ACCENT : PANEL_LIGHT);
     game.setTextColor(TEXT_MAIN, PANEL);
-    game.drawString("STASH JAR", 14, 113, 2);
-    drawButton(116, 113, 26, 19, "<", PANEL_LIGHT);
-    drawButton(144, 113, 26, 19, ">", PANEL_LIGHT);
+    game.drawString("FLOWER JAR", 13, 113, 1);
+    drawButton(117, 111, 18, 14, "<", PANEL_LIGHT);
+    drawButton(137, 111, 18, 14, ">", PANEL_LIGHT);
     snprintf(seedLine, sizeof(seedLine), "%s x%u", strainNames[sendStashStrain],
              stashByStrain[sendStashStrain]);
     game.setTextColor(stashReady ? GOLD : TEXT_DIM, PANEL);
-    game.drawRightString(seedLine, 306, 119, 1);
+    game.drawRightString(seedLine, 148, 128, 1);
+    game.fillRoundRect(163, 108, 152, 34, 5, PANEL);
+    game.drawRoundRect(163, 108, 152, 34, 5, hashReady ? ACCENT : PANEL_LIGHT);
+    game.setTextColor(TEXT_MAIN, PANEL);
+    game.drawString("HASH JAR", 171, 113, 1);
+    drawButton(275, 111, 18, 14, "<", PANEL_LIGHT);
+    drawButton(295, 111, 18, 14, ">", PANEL_LIGHT);
+    snprintf(seedLine, sizeof(seedLine), "%s x%u", strainNames[sendHashStrain],
+             hashByStrain[sendHashStrain]);
+    game.setTextColor(hashReady ? GOLD : TEXT_DIM, PANEL);
+    game.drawRightString(seedLine, 306, 128, 1);
     char ownedVal[12];
     snprintf(ownedVal, sizeof(ownedVal), "x%u", pestDefenseKits);
     drawSendCard(5, 146, 100, 34, "PEST +1", ownedVal,
@@ -3756,6 +3781,22 @@ void drawNearbyPage() {
     drawButton(7, 184, 152, 19, "SEND MONEY",
                selectedNearbyPeerValid() ? ACCENT_DARK : PANEL_LIGHT);
     drawButton(165, 184, 148, 19, "BACK", PANEL_LIGHT);
+    if (sendConfirmItem) {
+      // Send confirmation: BACK cancels, SEND IT gifts the product.
+      game.fillRoundRect(5, 146, 310, 58, 8, PANEL);
+      game.drawRoundRect(5, 146, 310, 58, 8, GOLD);
+      game.setTextColor(TEXT_MAIN, PANEL);
+      char msg[44];
+      if (sendConfirmItem == 1)
+        snprintf(msg, sizeof(msg), "SEND 4 %s SEEDS?", strainNames[sendSeedStrain]);
+      else if (sendConfirmItem == 5)
+        snprintf(msg, sizeof(msg), "SEND 1 %s FLOWER JAR?", strainNames[sendStashStrain]);
+      else
+        snprintf(msg, sizeof(msg), "SEND 1 %s HASH JAR?", strainNames[sendHashStrain]);
+      game.drawCentreString(msg, 160, 153, 1);
+      drawButton(5, 168, 150, 26, "BACK", PANEL_LIGHT);
+      drawButton(163, 168, 152, 26, "SEND IT", ACCENT_DARK, TFT_WHITE);
+    }
     return;
   }
 
@@ -3822,6 +3863,11 @@ void sendNearbyGift(uint8_t item) {
       giftName = "a stash jar";
       strainTag[0] = '0' + sendStashStrain;
       break;
+    case 6:
+      if (!hashByStrain[sendHashStrain]) return;
+      giftName = "a hash jar";
+      strainTag[0] = '0' + sendHashStrain;
+      break;
     default: return;
   }
   if (sendNearbyPacket(nearbyPeers[selectedNearbyPeer].mac, PACKET_GIFT, item, strainTag)) {
@@ -3833,6 +3879,7 @@ void sendNearbyGift(uint8_t item) {
     else if (item == 3) { waterPacks -= 2; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent %s", giftName); }
     else if (item == 4) { careKits -= 2; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent %s", giftName); }
     else if (item == 5) { --stashByStrain[sendStashStrain]; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent a %s jar", strainNames[sendStashStrain]); }
+    else if (item == 6) { --hashByStrain[sendHashStrain]; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent a %s hash jar", strainNames[sendHashStrain]); }
     saveGame();
   } else {
     snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Send failed; supplies kept");
@@ -4275,51 +4322,178 @@ uint8_t blendQuality(uint8_t oldQ, uint16_t oldUnits, uint8_t newQ, uint16_t new
   return (uint8_t)(((uint32_t)oldQ * oldUnits + (uint32_t)newQ * newUnits) / total);
 }
 
-void sellOneFlower() {
-  // SELL 1 moves a jar of the strain picked on the market shelf; falls back
-  // to the top-shelf jar if the picker lands on an empty bucket.
-  int16_t strain = marketSellStrain < STRAIN_COUNT && stashByStrain[marketSellStrain]
-                       ? marketSellStrain : priciestStashStrain();
-  if (strain < 0) return;
+void sellOneFlower(uint8_t strain) {
+  if (strain >= STRAIN_COUNT || !stashByStrain[strain]) return;
   --stashByStrain[strain];
   credits += flowerUnitPrice(strain);
   playCoin();
   saveGame();
 }
 
-void sellAllFlowers() {
-  // SELL ALL empties the picked strain's jars — cycle the shelf for others.
-  if (marketSellStrain >= STRAIN_COUNT || !stashByStrain[marketSellStrain]) return;
-  uint32_t total = (uint32_t)stashByStrain[marketSellStrain] * flowerUnitPrice(marketSellStrain);
-  stashByStrain[marketSellStrain] = 0;
+void sellAllFlowers(uint8_t strain) {
+  if (strain >= STRAIN_COUNT || !stashByStrain[strain]) return;
+  uint32_t total = (uint32_t)stashByStrain[strain] * flowerUnitPrice(strain);
+  stashByStrain[strain] = 0;
   uint32_t newCredits = (uint32_t)credits + total;
   credits = newCredits > 65535 ? 65535 : (uint16_t)newCredits;
   playCoin();
   saveGame();
 }
 
-void sellOneHash() {
-  // SELL 1 moves the top-shelf jar first.
-  int16_t strain = priciestHashStrain();
-  if (!hashRoomUnlocked || strain < 0) return;
+void sellOneHash(uint8_t strain) {
+  if (!hashRoomUnlocked || strain >= STRAIN_COUNT || !hashByStrain[strain]) return;
   --hashByStrain[strain];
   credits += hashUnitPrice(strain);
   playCoin();
   saveGame();
 }
 
-void sellAllHash() {
-  if (!hashRoomUnlocked) return;
-  uint32_t total = 0;
-  for (uint8_t i = 0; i < STRAIN_COUNT; ++i) {
-    total += (uint32_t)hashByStrain[i] * hashUnitPrice(i);
-    hashByStrain[i] = 0;
-  }
-  if (total == 0) return;
+void sellAllHash(uint8_t strain) {
+  if (!hashRoomUnlocked || strain >= STRAIN_COUNT || !hashByStrain[strain]) return;
+  uint32_t total = (uint32_t)hashByStrain[strain] * hashUnitPrice(strain);
+  hashByStrain[strain] = 0;
   uint32_t newCredits = (uint32_t)credits + total;
   credits = newCredits > 65535 ? 65535 : (uint16_t)newCredits;
   playCoin();
   saveGame();
+}
+
+// ============ Market sell submenu ============
+// Rebuild the stocked-strain list for the active sell mode, keeping the
+// cursor when the strain is still stocked.
+static void marketSellRefresh() {
+  marketSellCount = 0;
+  for (uint8_t i = 0; i < STRAIN_COUNT; ++i) {
+    uint16_t n = marketSellMode <= 2 ? stashByStrain[i] : hashByStrain[i];
+    if (n) marketSellList[marketSellCount++] = i;
+  }
+  for (uint8_t k = 0; k < marketSellCount; ++k)
+    if (marketSellList[k] == marketSellStrain) return;
+  if (marketSellCount) marketSellStrain = marketSellList[0];
+}
+
+static void openMarketSell(uint8_t mode) {
+  marketSellMode = mode;
+  marketSellPage = 0;
+  marketSellStrain = 0;
+  marketSellConfirm = false;
+  marketSellRefresh();
+  render();
+}
+
+static void drawSellStrainModal() {
+  bool flower = marketSellMode <= 2;
+  game.fillRoundRect(5, 72, 310, 133, 8, PANEL);
+  game.drawRoundRect(5, 72, 310, 133, 8, PANEL_LIGHT);
+  game.setTextColor(TEXT_MAIN, PANEL);
+  game.drawCentreString(flower ? "SELL FLOWER - PICK A STRAIN"
+                               : "SELL HASH - PICK A STRAIN", 160, 76, 1);
+  if (!marketSellCount) {
+    game.setTextColor(TEXT_DIM, PANEL);
+    game.drawCentreString("Nothing to sell here", 160, 120, 1);
+    drawButton(110, 160, 100, 26, "BACK", PANEL_LIGHT);
+    return;
+  }
+  if (marketSellConfirm) {
+    // One-tap confirmation: nothing sells until YES, SELL IT.
+    game.setTextColor(TEXT_MAIN, PANEL);
+    game.drawCentreString("ARE YOU SURE?", 160, 98, 2);
+    char detail[44];
+    if (marketSellMode == 1)
+      snprintf(detail, sizeof(detail), "Sell 1 %s jar - $%u", strainNames[marketSellStrain],
+               flowerUnitPrice(marketSellStrain));
+    else if (marketSellMode == 2)
+      snprintf(detail, sizeof(detail), "Sell all %s jars (x%u) - $%u", strainNames[marketSellStrain],
+               stashByStrain[marketSellStrain],
+               (uint32_t)stashByStrain[marketSellStrain] * flowerUnitPrice(marketSellStrain));
+    else if (marketSellMode == 3)
+      snprintf(detail, sizeof(detail), "Sell 1 %s hash - $%u", strainNames[marketSellStrain],
+               hashUnitPrice(marketSellStrain));
+    else
+      snprintf(detail, sizeof(detail), "Sell all %s hash (x%u) - $%u", strainNames[marketSellStrain],
+               hashByStrain[marketSellStrain],
+               (uint32_t)hashByStrain[marketSellStrain] * hashUnitPrice(marketSellStrain));
+    game.drawCentreString(detail, 160, 126, 1);
+    drawButton(5, 162, 150, 24, "BACK", PANEL_LIGHT);
+    drawButton(163, 162, 152, 24, "YES, SELL IT", RED, TFT_WHITE);
+    return;
+  }
+  char counter[16];
+  snprintf(counter, sizeof(counter), "%u-%u of %u", marketSellPage * 3 + 1,
+           min((int)(marketSellPage * 3 + 3), (int)marketSellCount), marketSellCount);
+  game.setTextColor(TEXT_DIM, PANEL);
+  game.drawRightString(counter, 309, 76, 1);
+  uint8_t first = marketSellPage * 3;
+  for (uint8_t r = 0; r < 3 && first + r < marketSellCount; ++r) {
+    uint8_t s = marketSellList[first + r];
+    int y = 88 + r * 24;
+    bool sel = s == marketSellStrain;
+    game.fillRoundRect(11, y, 298, 22, 5, sel ? ACCENT_DARK : PANEL);
+    game.drawRoundRect(11, y, 298, 22, 5, sel ? GOLD : PANEL_LIGHT);
+    game.setTextColor(sel ? TFT_WHITE : TEXT_MAIN, sel ? ACCENT_DARK : PANEL);
+    char row[44];
+    if (flower)
+      snprintf(row, sizeof(row), "%s  x%u - $%u each", strainNames[s],
+               stashByStrain[s], flowerUnitPrice(s));
+    else
+      snprintf(row, sizeof(row), "%s  x%u - $%u each", strainNames[s],
+               hashByStrain[s], hashUnitPrice(s));
+    game.drawCentreString(row, 160, y + 5, 1);
+  }
+  // Confirm row: < page, SELL, > page. BACK sits below.
+  char price[40];
+  if (marketSellMode == 1)
+    snprintf(price, sizeof(price), "SELL 1 JAR - $%u", flowerUnitPrice(marketSellStrain));
+  else if (marketSellMode == 2)
+    snprintf(price, sizeof(price), "SELL ALL x%u - $%u", stashByStrain[marketSellStrain],
+             (uint32_t)stashByStrain[marketSellStrain] * flowerUnitPrice(marketSellStrain));
+  else if (marketSellMode == 3)
+    snprintf(price, sizeof(price), "SELL 1 HASH - $%u", hashUnitPrice(marketSellStrain));
+  else
+    snprintf(price, sizeof(price), "SELL ALL x%u - $%u", hashByStrain[marketSellStrain],
+             (uint32_t)hashByStrain[marketSellStrain] * hashUnitPrice(marketSellStrain));
+  drawButton(5, 162, 40, 24, "<", PANEL_LIGHT);
+  drawButton(49, 162, 222, 24, price, ACCENT_DARK, TFT_WHITE);
+  drawButton(275, 162, 40, 24, ">", PANEL_LIGHT);
+  drawButton(115, 190, 90, 14, "BACK", PANEL_LIGHT);
+}
+
+static void touchMarketSellModal(int x, int y) {
+  if (marketSellConfirm) {
+    if (y >= 162 && y < 186) {
+      if (x < 160) {
+        marketSellConfirm = false;         // BACK — nothing sold
+      } else {
+        if (marketSellMode == 1) sellOneFlower(marketSellStrain);
+        else if (marketSellMode == 2) sellAllFlowers(marketSellStrain);
+        else if (marketSellMode == 3) sellOneHash(marketSellStrain);
+        else sellAllHash(marketSellStrain);
+        marketSellConfirm = false;
+        marketSellRefresh();
+        if (!marketSellCount) marketSellMode = 0;
+      }
+    } else {
+      marketSellConfirm = false;           // tap anywhere else cancels
+    }
+    render();
+    return;
+  }
+  if (y >= 88 && y < 158) {
+    uint8_t idx = marketSellPage * 3 + (y - 88) / 24;
+    if (idx < marketSellCount) { marketSellStrain = marketSellList[idx]; render(); }
+  } else if (y >= 162 && y < 186) {
+    if (x < 45) {
+      if (marketSellPage) { --marketSellPage; render(); }
+    } else if (x >= 275) {
+      if ((marketSellPage + 1) * 3 < marketSellCount) { ++marketSellPage; render(); }
+    } else if (marketSellCount) {
+      marketSellConfirm = true;            // arm the ARE YOU SURE? panel
+      render();
+    }
+  } else if (y >= 190 && y < 204) {
+    marketSellMode = 0;
+    render();
+  }
 }
 
 void prepareDemoHarvest() {
@@ -5403,6 +5577,8 @@ void handleNearbyTouch(int x, int y) {
         if (!seedsByStrain[sendSeedStrain]) sendSeedStrain = nextSeededStrain(sendSeedStrain, 1);
         sendStashStrain = seedStrain;
         if (!stashByStrain[sendStashStrain]) sendStashStrain = nextStashStrain(sendStashStrain, 1);
+        sendHashStrain = seedStrain;
+        if (!hashByStrain[sendHashStrain]) sendHashStrain = nextHashStrain(sendHashStrain, 1);
       } else if (x >= 214) {
         nearbyMode = 3;
       }
@@ -5445,25 +5621,56 @@ void handleNearbyTouch(int x, int y) {
   }
 
   if (nearbyMode == 2) {
-    // Arrows on the seeds card pick the strain; card taps send.
+    // Products (seeds, jars, hash) ask once before sending: the first tap
+    // arms the SEND IT? / BACK panel, the second tap confirms.
+    if (sendConfirmItem) {
+      if (y >= 168 && y < 194) {
+        if (x < 160) {
+          sendConfirmItem = 0;             // BACK — nothing sent
+        } else {
+          uint8_t item = sendConfirmItem;
+          sendConfirmItem = 0;
+          sendNearbyGift(item);
+        }
+      } else {
+        sendConfirmItem = 0;               // tap anywhere else cancels
+      }
+      render();
+      return;
+    }
+    // Arrows on the seeds card pick the strain; card taps ask to send.
     if (y >= 75 && y < 94 && x >= 116 && x < 170) {
       sendSeedStrain = nextCatalogStrain(sendSeedStrain, x < 142 ? -1 : 1);
       render();
       return;
     }
-    if (y >= 113 && y < 132 && x >= 116 && x < 170) {
-      sendStashStrain = nextCatalogStrain(sendStashStrain, x < 142 ? -1 : 1);
-      render();
-      return;
-    }
     if (y >= 70 && y < 104) {
-      if (selectedNearbyPeerValid() && seedsByStrain[sendSeedStrain] >= 4)
-        sendNearbyGift(1);
+      if (selectedNearbyPeerValid() && seedsByStrain[sendSeedStrain] >= 4) {
+        sendConfirmItem = 1;
+        render();
+      }
       return;
     }
     if (y >= 108 && y < 142) {
-      if (selectedNearbyPeerValid() && stashByStrain[sendStashStrain] > 0)
-        sendNearbyGift(5);
+      // Left half: flower jar; right half: hash jar. Arrow strips cycle the
+      // strain, tapping the rest of the card arms the confirm panel.
+      if (x < 160) {
+        if (y < 128 && x >= 112) {
+          sendStashStrain = nextCatalogStrain(sendStashStrain, x < 132 ? -1 : 1);
+          render();
+        } else if (selectedNearbyPeerValid() && stashByStrain[sendStashStrain] > 0) {
+          sendConfirmItem = 5;
+          render();
+        }
+      } else {
+        if (y < 128 && x >= 272) {
+          sendHashStrain = nextCatalogStrain(sendHashStrain, x < 292 ? -1 : 1);
+          render();
+        } else if (selectedNearbyPeerValid() && hashByStrain[sendHashStrain] > 0) {
+          sendConfirmItem = 6;
+          render();
+        }
+      }
       return;
     }
     if (y >= 146 && y < 180) {
@@ -5688,6 +5895,10 @@ void handleTouch(int x, int y) {
     case MARKET:
       if (y >= 72 && y < 93) {
         marketGearMode = x >= 160;
+        marketSellMode = 0;
+        marketSellConfirm = false;
+      } else if (marketSellMode) {
+        touchMarketSellModal(x, y);
       } else if (marketGearMode) {
         // Gear grid: bong / lighters / papers cards; the stoned card is info.
         if (y >= 94 && y < 132) {
@@ -5701,16 +5912,13 @@ void handleTouch(int x, int y) {
           else takeSmokeBreak(1, true);
         }
       } else {
-        // Shelf row cycles the strain; sell-one left, sell-all right.
-        if (y >= 94 && y < 116) {
-          if (x < 40) marketSellStrain = nextStashStrain(marketSellStrain, -1);
-          else if (x >= 270) marketSellStrain = nextStashStrain(marketSellStrain, 1);
-        } else if (y >= 118 && y < 158) {
-          if (x < 160) sellOneFlower();
-          else sellAllFlowers();
-        } else if (y >= 160 && y < 198) {
-          if (x < 160) sellOneHash();
-          else sellAllHash();
+        // Sell grid: each card opens the strain submenu.
+        if (y >= 94 && y < 132) {
+          if (x < 160) openMarketSell(1);
+          else openMarketSell(2);
+        } else if (y >= 136 && y < 174) {
+          if (x < 160) openMarketSell(3);
+          else openMarketSell(4);
         }
       }
       break;
@@ -5739,16 +5947,18 @@ void handleTouch(int x, int y) {
         cheatFeedback[0] = '\0';
         render();
         return;
-      } else if (y >= 156 && y < 172) {
-        if (resetArmed) resetGame();
-        else {
-          resetArmed = true;
-          resetArmedAt = millis();
+      } else if (y >= 158 && y < 204) {
+        if (x < 160) {
+          if (resetArmed) resetGame();
+          else {
+            resetArmed = true;
+            resetArmedAt = millis();
+          }
+        } else {
+          page = OTA_PAGE;               // WiFi login + OTA updates screen
+          render();
+          return;
         }
-      } else if (y >= 180 && y < 206) {
-        page = OTA_PAGE;                 // WiFi login + OTA updates screen
-        render();
-        return;
       }
       break;
     case OTA_PAGE:
@@ -6650,7 +6860,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: seed pack pill badge\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: hash jars + sell confirm menus\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
