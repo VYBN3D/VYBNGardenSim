@@ -5,6 +5,13 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v28 — OTA busy guard + sell-modal flash fix
+- WiFi/UPDATES: tapping INSTALL now swaps the button to a dimmed
+  "DOWNLOADING ..." that can't be re-tapped; if the download or flash
+  fails the button returns to normal so you can retry
+- Sell submenu: arrow taps no longer trigger the full-page tail render,
+  which briefly flashed the market page under the modal
+
 ## v27 — smooth sell-picker arrows
 - Tapping the giant < > arrows in the sell submenu now repaints only the
   strain card and the SELL bar (a full-page render used to flash the

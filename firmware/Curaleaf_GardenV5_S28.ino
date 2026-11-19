@@ -231,6 +231,7 @@ uint8_t wifiSavedCount = 0;
 uint8_t wifiLoginStage = 0;            // 0 typing network, 1 typing password
 char otaStatus[64] = "No WiFi yet - tap WIFI LOGIN";
 char otaLatest[16] = "";               // version.txt when a check succeeded
+bool otaBusy = false;                  // install running: button disabled
 // Cheat console (Options > CHEATS): type a code, tap ACTIVATE.
 char cheatEdit[16] = "";
 char cheatFeedback[28] = "";
@@ -410,7 +411,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v27"
+#define FW_VERSION "v28"
 #define FW_BOARD    "S28"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -3032,12 +3033,14 @@ static void otaCheckUpdate() {
 }
 
 static void otaInstallUpdate() {
+  otaBusy = true;                      // arm the disabled DOWNLOADING button
   snprintf(otaStatus, sizeof(otaStatus), "Connecting WiFi ...");
   render();
   otaConnectToSaved(9000);
   if (!wifiConnected()) {
     snprintf(otaStatus, sizeof(otaStatus), "No WiFi - check name/password");
     otaRestoreRadio();
+    otaBusy = false;
     return;
   }
   snprintf(otaStatus, sizeof(otaStatus), "Downloading update ... KEEP STILL");
@@ -3050,23 +3053,27 @@ static void otaInstallUpdate() {
   http.setTimeout(30000);
   if (!http.begin(tls, String(OTA_RELEASE_BASE) + OTA_BIN_NAME)) {
     snprintf(otaStatus, sizeof(otaStatus), "Download failed");
+    otaBusy = false;
     return;
   }
   int code = http.GET();
   if (code != 200) {
     snprintf(otaStatus, sizeof(otaStatus), "Download failed (HTTP %d)", code);
     http.end();
+    otaBusy = false;
     return;
   }
   int size = http.getSize();
   if (size <= 0) {
     snprintf(otaStatus, sizeof(otaStatus), "Download failed (no size)");
     http.end();
+    otaBusy = false;
     return;
   }
   if (!Update.begin(size)) {
     snprintf(otaStatus, sizeof(otaStatus), "Not enough OTA space");
     http.end();
+    otaBusy = false;
     return;
   }
   size_t written = Update.writeStream(*http.getStreamPtr());
@@ -3074,10 +3081,12 @@ static void otaInstallUpdate() {
   if (written != (size_t)size) {
     snprintf(otaStatus, sizeof(otaStatus), "Transfer interrupted");
     Update.abort();
+    otaBusy = false;
     return;
   }
   if (!Update.end(true)) {
     snprintf(otaStatus, sizeof(otaStatus), "Flash verify failed");
+    otaBusy = false;
     return;
   }
   OTA_GFX.fillScreen(0x0861);
@@ -3107,8 +3116,14 @@ static void drawOtaPage() {
   OTA_GFX.setTextColor(otaLatest[0] && strcmp(otaLatest, FW_VERSION) ? GOLD : TEXT_DIM, BG);
   OTA_GFX.drawCentreString(otaStatus, 160, 150, 1);
   if (otaLatest[0] && strcmp(otaLatest, FW_VERSION)) {
-    snprintf(line, sizeof(line), "INSTALL %s AND REBOOT", otaLatest);
-    drawButton(5, 160, 310, 36, line, ACCENT_DARK, TFT_WHITE);
+    if (otaBusy) {
+      // Install running: the button dims and reads DOWNLOADING so a second
+      // tap can't restart the flash.
+      drawButton(5, 160, 310, 36, "DOWNLOADING ...", PANEL_LIGHT, TEXT_DIM);
+    } else {
+      snprintf(line, sizeof(line), "INSTALL %s AND REBOOT", otaLatest);
+      drawButton(5, 160, 310, 36, line, ACCENT_DARK, TFT_WHITE);
+    }
   }
 }
 
@@ -3320,7 +3335,7 @@ static void touchOtaPage(int x, int y) {
   } else if (y >= 108 && y < 142) {
     otaCheckUpdate();
     render();
-  } else if (y >= 160 && y < 196 &&
+  } else if (y >= 160 && y < 196 && !otaBusy &&
              otaLatest[0] && strcmp(otaLatest, FW_VERSION)) {
     otaInstallUpdate();
     render();
@@ -5883,6 +5898,7 @@ void handleTouch(int x, int y) {
         marketSellConfirm = false;
       } else if (marketSellMode) {
         touchMarketSellModal(x, y);
+        return;   // the modal renders itself; skip the full-page tail render
       } else if (marketGearMode) {
         // Gear grid: bong / lighters / papers cards; the stoned card is info.
         if (y >= 94 && y < 132) {
@@ -6845,7 +6861,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: smooth sell arrows\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: OTA guard + modal flash\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
