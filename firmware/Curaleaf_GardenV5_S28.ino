@@ -411,7 +411,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v28"
+#define FW_VERSION "v29"
 #define FW_BOARD    "S28"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -1092,6 +1092,7 @@ const char *farmerCharacterName(uint8_t character) {
   if (character == 5) return "James";
   if (character == 6) return "Sergio";
   if (character == 7) return "Vicente";
+  if (character == 9) return "Benji";
   return "Conor";
 }
 
@@ -1280,7 +1281,7 @@ void loadGame() {
   plantActive = preferences.getBool("active", true);
   firstPlantingDone = preferences.getBool("plantDone", true);
   farmerCharacter = preferences.getUChar("farmer", 0);
-  if (farmerCharacter > 7) farmerCharacter = 0;
+  if (farmerCharacter > 9) farmerCharacter = 0;
   farmerCharacterChosen = preferences.getBool("farmerChosen", firstPlantingDone);
   plantedPotMask = preferences.getUChar("plantMask", firstPlantingDone ? 0x0F : 0);
   uint8_t afterPlant = preferences.getUChar("afterPlant", (uint8_t)GARDEN);
@@ -1694,6 +1695,16 @@ void drawFarmerAvatar() {
     game.drawFastHLine(300, 12, 2, TFT_BLACK);
     game.drawFastHLine(297, 16, 8, rgb565(62, 52, 47));          // beard
     game.fillRoundRect(296, 17, 10, 5, 2, rgb565(62, 52, 47));
+  } else if (farmerCharacter == 9) {
+    // Benji: blonde dreads, blue eyes, mustache + chin beard.
+    game.fillRoundRect(294, 5, 14, 7, 4, rgb565(146, 114, 70));
+    game.fillCircle(301, 13, 6, rgb565(230, 184, 143));
+    game.fillRect(294, 9, 3, 9, rgb565(146, 114, 70));
+    game.fillRect(306, 9, 3, 9, rgb565(146, 114, 70));
+    game.drawPixel(299, 12, rgb565(46, 78, 96));
+    game.drawPixel(303, 12, rgb565(46, 78, 96));
+    game.drawFastHLine(298, 15, 7, rgb565(66, 46, 32));
+    game.fillRoundRect(298, 17, 7, 4, 2, rgb565(66, 46, 32));
   } else {
     game.fillRoundRect(293, 4, 16, 20, 7, hair);
     game.fillCircle(301, 13, 6, skin);
@@ -1813,6 +1824,31 @@ void drawFarmerHeadLarge(int cx, int cy, uint8_t character) {
     return;
   }
 
+  if (character == 9) {
+    // Benji: blonde-brown dreadlocks, blue eyes, mustache + chin beard.
+    uint16_t bHair = rgb565(146, 114, 70), bLight = rgb565(184, 152, 100),
+             bDark = rgb565(112, 84, 52), bBeard = rgb565(66, 46, 32);
+    game.fillRoundRect(cx - 14, cy - 14, 28, 34, 10, bHair);   // dreadlock mass behind
+    game.fillCircle(cx, cy, 10, skin);
+    game.fillRoundRect(cx - 12, cy - 14, 24, 9, 6, bHair);     // hairline
+    game.fillRect(cx - 15, cy - 6, 5, 22, bHair);              // dread walls past the jaw
+    game.fillRect(cx + 10, cy - 6, 5, 22, bHair);
+    for (int i = 0; i < 5; ++i) {                              // individual dreads
+      game.fillRect(cx - 15, cy - 4 + i * 5, 3, 4, bLight);
+      game.fillRect(cx + 12, cy - 2 + i * 5, 3, 4, bDark);
+    }
+    game.fillCircle(cx - 12, cy + 16, 2, bHair);               // loose dread tips
+    game.fillCircle(cx + 12, cy + 17, 2, bLight);
+    game.fillRect(cx - 5, cy - 5, 3, 2, rgb565(58, 46, 34));   // brows
+    game.fillRect(cx + 2, cy - 5, 3, 2, rgb565(58, 46, 34));
+    game.drawPixel(cx - 4, cy - 3, rgb565(46, 78, 96));        // blue eyes
+    game.drawPixel(cx + 4, cy - 3, rgb565(46, 78, 96));
+    game.fillRoundRect(cx - 7, cy + 4, 14, 4, 2, bBeard);      // mustache
+    game.fillRect(cx - 1, cy + 4, 2, 2, skin);                 // philtrum gap
+    game.fillRoundRect(cx - 3, cy + 7, 7, 6, 2, bBeard);       // chin patch
+    return;
+  }
+
   game.fillRoundRect(cx - 14, cy - 14, 28, 36, 10, hair);
   if (character == 2) {
     for (int i = -2; i <= 2; ++i) {
@@ -1896,6 +1932,7 @@ void drawCharacterMini(int cx, int top, uint8_t character) {
                 : character == 6 ? rgb565(45, 32, 26)
                 : character == 7 ? rgb565(58, 38, 26)
                 : character == 1 ? rgb565(96, 64, 40)
+                : character == 9 ? rgb565(146, 114, 70)
                 : rgb565(35, 27, 26);
   uint16_t skin = character == 2 ? rgb565(133, 84, 61)
                 : character == 6 ? rgb565(172, 112, 78)
@@ -3527,7 +3564,7 @@ void drawCharacterSelectPage() {
     game.drawLine(286, 6, 294, 14, RED);
     game.drawLine(294, 6, 286, 14, RED);
   }
-  uint8_t c = characterSelectIndex % 9;
+  uint8_t c = characterSelectIndex % 10;
   game.fillRoundRect(58, 30, 204, 160, 10, PANEL);
   game.drawRoundRect(58, 30, 204, 160, 10, ACCENT_DARK);
   drawFarmerHeadLarge(160, 90, c);
@@ -5078,6 +5115,27 @@ void drawFarmerHeadScaled(int cx, int cy, uint8_t character, int s) {
     game.drawFastHLine(cx + SP(-9), cy + SP(-4), SP(7), rgb565(96, 107, 111));
     game.drawFastHLine(cx + SP(2), cy + SP(-4), SP(7), rgb565(96, 107, 111));
     game.drawFastHLine(cx + SP(-4), cy + SP(6), SP(8), rgb565(112, 65, 52));
+  } else if (character == 9) {
+    uint16_t bHair = rgb565(146, 114, 70), bLight = rgb565(184, 152, 100),
+             bDark = rgb565(112, 84, 52), bBeard = rgb565(66, 46, 32);
+    game.fillRoundRect(cx + SP(-14), cy + SP(-14), SP(28), SP(34), min(SP(10), SP(16)), bHair);
+    game.fillCircle(cx, cy, SP(10), skin);
+    game.fillRoundRect(cx + SP(-12), cy + SP(-14), SP(24), SP(9), min(SP(6), SP(11)), bHair);
+    game.fillRect(cx + SP(-15), cy + SP(-6), SP(5), SP(22), bHair);
+    game.fillRect(cx + SP(10), cy + SP(-6), SP(5), SP(22), bHair);
+    for (int i = 0; i < 5; ++i) {
+      game.fillRect(cx + SP(-15), cy + SP(-4 + i * 5), SP(3), SP(4), bLight);
+      game.fillRect(cx + SP(12), cy + SP(-2 + i * 5), SP(3), SP(4), bDark);
+    }
+    game.fillCircle(cx + SP(-12), cy + SP(16), SP(2), bHair);
+    game.fillCircle(cx + SP(12), cy + SP(17), SP(2), bLight);
+    game.fillRect(cx + SP(-5), cy + SP(-5), SP(3), SP(2), rgb565(58, 46, 34));
+    game.fillRect(cx + SP(2), cy + SP(-5), SP(3), SP(2), rgb565(58, 46, 34));
+    game.drawPixel(cx + SP(-4), cy + SP(-3), rgb565(46, 78, 96));
+    game.drawPixel(cx + SP(4), cy + SP(-3), rgb565(46, 78, 96));
+    game.fillRoundRect(cx + SP(-7), cy + SP(4), SP(14), SP(4), min(SP(2), SP(3)), bBeard);
+    game.fillRect(cx + SP(-1), cy + SP(4), SP(2), SP(2), skin);
+    game.fillRoundRect(cx + SP(-3), cy + SP(7), SP(7), SP(6), min(SP(2), SP(3)), bBeard);
   } else {
     game.fillRoundRect(cx + SP(-12), cy + SP(-14), SP(24), SP(8), min(SP(6), SP(11)), hair);
     game.fillRect(cx + SP(-13), cy + SP(-6), SP(5), SP(29), hair);
@@ -5098,7 +5156,7 @@ void drawFarmerHeadScaled(int cx, int cy, uint8_t character, int s) {
 void drawGownUpCutsceneFrame(int frame) {
   if (drawGownUpBmpFrame(frame)) return;  // SD art overrides the vector scene
   bool bearded = farmerCharacter == 0 || farmerCharacter == 2 || farmerCharacter == 5 ||
-                  farmerCharacter == 6;
+                  farmerCharacter == 6 || farmerCharacter == 9;
   // Only the opening frame gets text; the rest of the tour speaks for itself.
   const char *captions[] = {
     "New hire!", "", "", "", "", "", "", ""
@@ -5249,7 +5307,8 @@ void animateGownUpCutscene() {
   for (int frame = 0; frame < 8; ++frame) {
     drawGownUpCutsceneFrame(frame);
     presentFrame();
-    pumpDelay(1200);  // brisk but readable
+    // Close-up push-in moves faster; the tour frames linger a little.
+    pumpDelay(frame <= 3 ? 600 : 1400);  // whole intro lands near 8 seconds
   }
   waitForCutsceneContinue();
 }
@@ -5766,7 +5825,7 @@ void chooseFarmerCharacter(uint8_t character) {
   bool firstTimeSetup = !farmerCharacterChosen && !selectingFarmerFromOptions;
   const char *oldCharacterName = farmerCharacterName(farmerCharacter);
   bool growerNameIsDefault = strcmp(growerName, oldCharacterName) == 0;
-  farmerCharacter = min((int)character, 8);
+  farmerCharacter = min((int)character, 9);
   farmerCharacterChosen = true;
   if (growerNameIsDefault || !growerName[0]) {
     strlcpy(growerName, farmerCharacterName(farmerCharacter), sizeof(growerName));
@@ -5813,12 +5872,12 @@ void handleTouch(int x, int y) {
       return;
     }
     if (y >= 88 && y < 138 && x < 54) {
-      characterSelectIndex = (characterSelectIndex + 8) % 9;  // wrap: 9 growers
+      characterSelectIndex = (characterSelectIndex + 9) % 10;  // wrap: 10 growers
       render();
       return;
     }
     if (y >= 88 && y < 138 && x >= 266) {
-      characterSelectIndex = (characterSelectIndex + 1) % 9;
+      characterSelectIndex = (characterSelectIndex + 1) % 10;
       render();
       return;
     }
@@ -6861,7 +6920,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: OTA guard + modal flash\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: Benji + faster intro\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif

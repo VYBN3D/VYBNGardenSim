@@ -5,6 +5,17 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v29 — Benji grower + faster intro
+- New grower **Benji** (10th character in the picker): blonde-brown
+  dreadlocks, blue eyes, mustache and chin beard — modeled after the
+  reference photo, no bandana
+- Benji is drawn everywhere the others are: character-select card,
+  corner avatar, mini head, intro close-up and the gown-up cutscene
+  (falls back to the generic gown art since no /GOWN9*.BMP exists yet)
+- Intro cutscene retimed: the face close-up push-in runs about twice as
+  fast (600 ms/frame), the tour frames linger at 1400 ms — the whole
+  intro now lands near 8 seconds
+
 ## v28 — OTA busy guard + sell-modal flash fix
 - WiFi/UPDATES: tapping INSTALL now swaps the button to a dimmed
   "DOWNLOADING ..." that can't be re-tapped; if the download or flash
