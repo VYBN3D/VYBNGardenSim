@@ -409,7 +409,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v19"
+#define FW_VERSION "v20"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -3158,27 +3158,28 @@ static void drawWifiLoginPage() {
       OTA_GFX.setTextColor(TEXT_DIM, BG);
       OTA_GFX.drawCentreString("No networks found", 160, 100, 1);
     }
-    for (uint8_t i = 0; i < 6; ++i) {
+    // Big tappable rows (button-scale): 4 per page, 24 px tall, font-2 text.
+    for (uint8_t i = 0; i < 4; ++i) {
       uint8_t row = wifiScanPage + i;
       if (row >= wifiScanCount) break;
-      int y = 60 + i * 17;
+      int y = 60 + i * 24;
       OTA_GFX.setTextColor(TEXT_MAIN, BG);
-      char name[34];
-      snprintf(name, sizeof(name), "%s%s", wifiScanSsid[row],
+      char name[25];
+      snprintf(name, sizeof(name), "%.21s%s", wifiScanSsid[row],
                wifiSavedIndex(wifiScanSsid[row]) >= 0 ? " *" : "");
-      OTA_GFX.drawString(name, 16, y, 1);
+      OTA_GFX.drawString(name, 16, y + 2, 2);
       char meta[10];
       snprintf(meta, sizeof(meta), "%d", wifiScanRssi[row]);
       OTA_GFX.setTextColor(TEXT_DIM, BG);
-      OTA_GFX.drawRightString(meta, 304, y, 1);
-      OTA_GFX.drawFastHLine(14, y + 9, 292, 0x3187);
+      OTA_GFX.drawRightString(meta, 304, y + 6, 1);
+      OTA_GFX.drawFastHLine(14, y + 22, 292, 0x3187);
     }
-    if (wifiScanCount > 6) {
+    if (wifiScanCount > 4) {
       OTA_GFX.setTextColor(TEXT_DIM, BG);
-      uint8_t last = wifiScanPage + 6 > wifiScanCount ? wifiScanCount : wifiScanPage + 6;
+      uint8_t last = wifiScanPage + 4 > wifiScanCount ? wifiScanCount : wifiScanPage + 4;
       char more[20];
       snprintf(more, sizeof(more), "%u-%u of %u", wifiScanPage + 1, last, wifiScanCount);
-      OTA_GFX.drawRightString(more, 304, 162, 1);
+      OTA_GFX.drawRightString(more, 304, 160, 1);
     }
     drawButton(7, 168, 72, 28, "RESCAN", PANEL_LIGHT);
     drawButton(85, 168, 72, 28, "<", PANEL_LIGHT);
@@ -3203,8 +3204,8 @@ static void drawWifiLoginPage() {
 static void touchWifiLogin(int x, int y) {
   if (wifiLoginStage == 0) {
     // Stage 0: tap a network row to pick it, or the buttons below.
-    if (y >= 60 && y < 158) {
-      uint8_t row = wifiScanPage + (y - 60) / 17;
+    if (y >= 60 && y < 156) {
+      uint8_t row = wifiScanPage + (y - 60) / 24;
       if (row < wifiScanCount) {
         int saved = wifiSavedIndex(wifiScanSsid[row]);
         if (saved >= 0) {
@@ -3247,10 +3248,10 @@ static void touchWifiLogin(int x, int y) {
         wifiScanStart();
         render();
       } else if (x < 160) {
-        if (wifiScanPage) wifiScanPage -= 6;
+        if (wifiScanPage) wifiScanPage -= 4;
         render();
       } else if (x < 238) {
-        if (wifiScanPage + 6 < wifiScanCount) wifiScanPage += 6;
+        if (wifiScanPage + 4 < wifiScanCount) wifiScanPage += 4;
         render();
       } else {
         wifiScanPending = false;
@@ -6587,7 +6588,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: farmer pop-out colour fix\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: big wifi scan rows\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
