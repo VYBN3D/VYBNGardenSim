@@ -5,6 +5,14 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v26 — sell picker uses big strain cards
+- The market strain submenu is rebuilt: BACK is now a proper button in the
+  top-right of the box; each stashed strain is one giant card flanked by
+  full-height < > arrows (cycling stocked strains like the other pickers),
+  with the strain name, count and per-unit price on the card
+- Full-width SELL bar under the card; the ARE YOU SURE? confirmation and
+  its big BACK / YES, SELL IT buttons are unchanged
+
 ## v25 — hash jars, sell/send confirm menus, bigger OTA buttons
 - Hash is now part of the stash list: the STASH page lists flower jars and
   hash units per strain on the same rows (jars grade | hash grade)

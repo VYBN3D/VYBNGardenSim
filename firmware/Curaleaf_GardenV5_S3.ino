@@ -410,7 +410,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v25"
+#define FW_VERSION "v26"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -879,7 +879,6 @@ uint8_t sendHashStrain = 0;         // hash-jar strain picked on the same screen
 uint8_t sendConfirmItem = 0;        // product armed for the SEND IT? panel
 uint8_t marketSellStrain = 0;   // strain picked in the sell submenu
 uint8_t marketSellMode = 0;     // 0 none, 1/2 flower sell-1/sell-all, 3/4 hash
-uint8_t marketSellPage = 0;     // submenu shows 3 strains per page
 uint8_t marketSellCount = 0;    // stocked strains for the active mode
 uint8_t marketSellList[STRAIN_COUNT];
 bool marketSellConfirm = false; // one-tap ARE YOU SURE? before selling
@@ -4374,7 +4373,6 @@ static void marketSellRefresh() {
 
 static void openMarketSell(uint8_t mode) {
   marketSellMode = mode;
-  marketSellPage = 0;
   marketSellStrain = 0;
   marketSellConfirm = false;
   marketSellRefresh();
@@ -4385,19 +4383,20 @@ static void drawSellStrainModal() {
   bool flower = marketSellMode <= 2;
   game.fillRoundRect(5, 72, 310, 133, 8, PANEL);
   game.drawRoundRect(5, 72, 310, 133, 8, PANEL_LIGHT);
+  // BACK sits top-right of the box, above the strain card.
+  drawButton(243, 74, 66, 20, "BACK", PANEL_LIGHT);
   game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawCentreString(flower ? "SELL FLOWER - PICK A STRAIN"
-                               : "SELL HASH - PICK A STRAIN", 160, 76, 1);
+  game.drawCentreString(flower ? "SELL FLOWER" : "SELL HASH", 124, 77, 2);
   if (!marketSellCount) {
     game.setTextColor(TEXT_DIM, PANEL);
-    game.drawCentreString("Nothing to sell here", 160, 120, 1);
-    drawButton(110, 160, 100, 26, "BACK", PANEL_LIGHT);
+    game.drawCentreString("Nothing to sell here", 160, 130, 1);
     return;
   }
+  uint8_t s = marketSellStrain;
   if (marketSellConfirm) {
     // One-tap confirmation: nothing sells until YES, SELL IT.
     game.setTextColor(TEXT_MAIN, PANEL);
-    game.drawCentreString("ARE YOU SURE?", 160, 98, 2);
+    game.drawCentreString("ARE YOU SURE?", 160, 100, 2);
     char detail[44];
     if (marketSellMode == 1)
       snprintf(detail, sizeof(detail), "Sell 1 %s jar - $%u", strainNames[marketSellStrain],
@@ -4414,33 +4413,26 @@ static void drawSellStrainModal() {
                hashByStrain[marketSellStrain],
                (uint32_t)hashByStrain[marketSellStrain] * hashUnitPrice(marketSellStrain));
     game.drawCentreString(detail, 160, 126, 1);
-    drawButton(5, 162, 150, 24, "BACK", PANEL_LIGHT);
-    drawButton(163, 162, 152, 24, "YES, SELL IT", RED, TFT_WHITE);
+    drawButton(5, 162, 150, 26, "BACK", PANEL_LIGHT);
+    drawButton(163, 162, 152, 26, "YES, SELL IT", RED, TFT_WHITE);
     return;
   }
-  char counter[16];
-  snprintf(counter, sizeof(counter), "%u-%u of %u", marketSellPage * 3 + 1,
-           min((int)(marketSellPage * 3 + 3), (int)marketSellCount), marketSellCount);
-  game.setTextColor(TEXT_DIM, PANEL);
-  game.drawRightString(counter, 309, 76, 1);
-  uint8_t first = marketSellPage * 3;
-  for (uint8_t r = 0; r < 3 && first + r < marketSellCount; ++r) {
-    uint8_t s = marketSellList[first + r];
-    int y = 88 + r * 24;
-    bool sel = s == marketSellStrain;
-    game.fillRoundRect(11, y, 298, 22, 5, sel ? ACCENT_DARK : PANEL);
-    game.drawRoundRect(11, y, 298, 22, 5, sel ? GOLD : PANEL_LIGHT);
-    game.setTextColor(sel ? TFT_WHITE : TEXT_MAIN, sel ? ACCENT_DARK : PANEL);
-    char row[44];
-    if (flower)
-      snprintf(row, sizeof(row), "%s  x%u - $%u each", strainNames[s],
-               stashByStrain[s], flowerUnitPrice(s));
-    else
-      snprintf(row, sizeof(row), "%s  x%u - $%u each", strainNames[s],
-               hashByStrain[s], hashUnitPrice(s));
-    game.drawCentreString(row, 160, y + 5, 1);
-  }
-  // Confirm row: < page, SELL, > page. BACK sits below.
+  // One giant card per stashed strain, flanked by big < > arrows.
+  drawButton(5, 100, 48, 64, "<", ACCENT_DARK);
+  drawButton(257, 100, 48, 64, ">", ACCENT_DARK);
+  game.fillRoundRect(57, 100, 196, 64, 8, PANEL);
+  game.drawRoundRect(57, 100, 196, 64, 8, ACCENT);
+  int nameFont = strlen(strainNames[s]) > 14 ? 1 : 2;
+  game.setTextColor(TEXT_MAIN, PANEL);
+  game.drawCentreString(strainNames[s], 155, nameFont == 2 ? 108 : 112, nameFont);
+  game.setTextColor(GOLD, PANEL);
+  char info[40];
+  if (flower)
+    snprintf(info, sizeof(info), "x%u jars - $%u each", stashByStrain[s], flowerUnitPrice(s));
+  else
+    snprintf(info, sizeof(info), "x%u hash - $%u each", hashByStrain[s], hashUnitPrice(s));
+  game.drawCentreString(info, 155, 134, 1);
+  // Full-width SELL bar under the card.
   char price[40];
   if (marketSellMode == 1)
     snprintf(price, sizeof(price), "SELL 1 JAR - $%u", flowerUnitPrice(marketSellStrain));
@@ -4452,15 +4444,13 @@ static void drawSellStrainModal() {
   else
     snprintf(price, sizeof(price), "SELL ALL x%u - $%u", hashByStrain[marketSellStrain],
              (uint32_t)hashByStrain[marketSellStrain] * hashUnitPrice(marketSellStrain));
-  drawButton(5, 162, 40, 24, "<", PANEL_LIGHT);
-  drawButton(49, 162, 222, 24, price, ACCENT_DARK, TFT_WHITE);
-  drawButton(275, 162, 40, 24, ">", PANEL_LIGHT);
-  drawButton(115, 190, 90, 14, "BACK", PANEL_LIGHT);
+  drawButton(5, 172, 310, 26, price, ACCENT_DARK, TFT_WHITE);
 }
+
 
 static void touchMarketSellModal(int x, int y) {
   if (marketSellConfirm) {
-    if (y >= 162 && y < 186) {
+    if (y >= 162 && y < 188) {
       if (x < 160) {
         marketSellConfirm = false;         // BACK — nothing sold
       } else {
@@ -4478,23 +4468,26 @@ static void touchMarketSellModal(int x, int y) {
     render();
     return;
   }
-  if (y >= 88 && y < 158) {
-    uint8_t idx = marketSellPage * 3 + (y - 88) / 24;
-    if (idx < marketSellCount) { marketSellStrain = marketSellList[idx]; render(); }
-  } else if (y >= 162 && y < 186) {
-    if (x < 45) {
-      if (marketSellPage) { --marketSellPage; render(); }
-    } else if (x >= 275) {
-      if ((marketSellPage + 1) * 3 < marketSellCount) { ++marketSellPage; render(); }
-    } else if (marketSellCount) {
-      marketSellConfirm = true;            // arm the ARE YOU SURE? panel
+  if (y >= 74 && y < 94 && x >= 243) {
+    marketSellMode = 0;                    // BACK, top-right of the box
+    marketSellConfirm = false;
+    render();
+  } else if (y >= 100 && y < 164) {
+    if (x < 57) {   // giant < arrow: previous stashed strain
+      marketSellStrain = marketSellMode <= 2 ? nextStashStrain(marketSellStrain, -1)
+                                             : nextHashStrain(marketSellStrain, -1);
+      render();
+    } else if (x >= 253) {   // giant > arrow: next stashed strain
+      marketSellStrain = marketSellMode <= 2 ? nextStashStrain(marketSellStrain, 1)
+                                             : nextHashStrain(marketSellStrain, 1);
       render();
     }
-  } else if (y >= 190 && y < 204) {
-    marketSellMode = 0;
+  } else if (y >= 172 && y < 198) {
+    marketSellConfirm = true;              // arm the ARE YOU SURE? panel
     render();
   }
 }
+
 
 void prepareDemoHarvest() {
   plantActive = true;
@@ -6860,7 +6853,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: hash jars + sell confirm menus\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: sell picker big cards\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
