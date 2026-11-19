@@ -21,11 +21,11 @@ jobs:
       matrix:
         include:
           - sketch: Curaleaf_GardenV5_S3
-            fqbn: "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=huge_app"
+            fqbn: "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
           - sketch: Curaleaf_GardenV5_S28
-            fqbn: "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=huge_app"
+            fqbn: "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
           - sketch: Curaleaf_GardenV5
-            fqbn: "esp32:esp32:esp32:PartitionScheme=huge_app"
+            fqbn: "esp32:esp32:esp32:PartitionScheme=default"
             classic: true
     steps:
       - uses: actions/checkout@v4
