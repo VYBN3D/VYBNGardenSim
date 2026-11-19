@@ -5,6 +5,14 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v30 — Benji v2 + Ray-Bans
+- Benji redrawn for clarity: individual alternating light/dark dread
+  strands framing the face instead of solid side walls, tighter dread
+  mass, and Ray-Ban style glasses (square dark lenses, bridge, temple
+  arms, lens glare) matching the rest of the growers
+- Corner avatar updated to match; header mini gets the glasses for free
+- GOWN9x SD art regenerated with the same cleaner face + Ray-Bans
+
 ## v29 — Benji grower + faster intro
 - New grower **Benji** (10th character in the picker): blonde-brown
   dreadlocks, blue eyes, mustache and chin beard — modeled after the

@@ -411,7 +411,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v29"
+#define FW_VERSION "v30"
 #define FW_BOARD    "S28"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -1696,14 +1696,15 @@ void drawFarmerAvatar() {
     game.drawFastHLine(297, 16, 8, rgb565(62, 52, 47));          // beard
     game.fillRoundRect(296, 17, 10, 5, 2, rgb565(62, 52, 47));
   } else if (farmerCharacter == 9) {
-    // Benji: blonde dreads, blue eyes, mustache + chin beard.
+    // Benji: blonde dreads, Ray-Bans, mustache + chin beard.
     game.fillRoundRect(294, 5, 14, 7, 4, rgb565(146, 114, 70));
     game.fillCircle(301, 13, 6, rgb565(230, 184, 143));
     game.fillRect(294, 9, 3, 9, rgb565(146, 114, 70));
     game.fillRect(306, 9, 3, 9, rgb565(146, 114, 70));
-    game.drawPixel(299, 12, rgb565(46, 78, 96));
-    game.drawPixel(303, 12, rgb565(46, 78, 96));
-    game.drawFastHLine(298, 15, 7, rgb565(66, 46, 32));
+    game.fillRoundRect(295, 10, 5, 4, 1, TFT_BLACK);
+    game.fillRoundRect(302, 10, 5, 4, 1, TFT_BLACK);
+    game.drawFastHLine(300, 12, 2, TFT_BLACK);
+    game.drawFastHLine(297, 15, 8, rgb565(66, 46, 32));
     game.fillRoundRect(298, 17, 7, 4, 2, rgb565(66, 46, 32));
   } else {
     game.fillRoundRect(293, 4, 16, 20, 7, hair);
@@ -1825,27 +1826,31 @@ void drawFarmerHeadLarge(int cx, int cy, uint8_t character) {
   }
 
   if (character == 9) {
-    // Benji: blonde-brown dreadlocks, blue eyes, mustache + chin beard.
+    // Benji: shoulder-length blonde-brown dreads, Ray-Bans, chin beard.
     uint16_t bHair = rgb565(146, 114, 70), bLight = rgb565(184, 152, 100),
              bDark = rgb565(112, 84, 52), bBeard = rgb565(66, 46, 32);
-    game.fillRoundRect(cx - 14, cy - 14, 28, 34, 10, bHair);   // dreadlock mass behind
+    game.fillRoundRect(cx - 14, cy - 14, 28, 32, 10, bHair);   // dread mass behind
     game.fillCircle(cx, cy, 10, skin);
     game.fillRoundRect(cx - 12, cy - 14, 24, 9, 6, bHair);     // hairline
-    game.fillRect(cx - 15, cy - 6, 5, 22, bHair);              // dread walls past the jaw
-    game.fillRect(cx + 10, cy - 6, 5, 22, bHair);
-    for (int i = 0; i < 5; ++i) {                              // individual dreads
-      game.fillRect(cx - 15, cy - 4 + i * 5, 3, 4, bLight);
-      game.fillRect(cx + 12, cy - 2 + i * 5, 3, 4, bDark);
+    // Individual dreads framing the face, alternating light/dark.
+    for (int i = 0; i < 3; ++i) {
+      int y = cy - 8 + i * 9;
+      game.fillRoundRect(cx - 16, y, 4, 9, 2, i % 2 ? bLight : bDark);     // left dreads
+      game.fillRoundRect(cx + 12, y + 3, 4, 9, 2, i % 2 ? bDark : bLight); // right dreads
     }
-    game.fillCircle(cx - 12, cy + 16, 2, bHair);               // loose dread tips
-    game.fillCircle(cx + 12, cy + 17, 2, bLight);
-    game.fillRect(cx - 5, cy - 5, 3, 2, rgb565(58, 46, 34));   // brows
-    game.fillRect(cx + 2, cy - 5, 3, 2, rgb565(58, 46, 34));
-    game.drawPixel(cx - 4, cy - 3, rgb565(46, 78, 96));        // blue eyes
-    game.drawPixel(cx + 4, cy - 3, rgb565(46, 78, 96));
-    game.fillRoundRect(cx - 7, cy + 4, 14, 4, 2, bBeard);      // mustache
-    game.fillRect(cx - 1, cy + 4, 2, 2, skin);                 // philtrum gap
-    game.fillRoundRect(cx - 3, cy + 7, 7, 6, 2, bBeard);       // chin patch
+    game.fillCircle(cx - 12, cy + 19, 2, bLight);              // loose dread tips
+    game.fillCircle(cx + 12, cy + 20, 2, bDark);
+    // Ray-Bans: square dark lenses, bridge and temple arms.
+    game.fillRoundRect(cx - 10, cy - 6, 9, 8, 1, black);
+    game.fillRoundRect(cx + 1, cy - 6, 9, 8, 1, black);
+    game.drawFastHLine(cx - 1, cy - 4, 2, black);
+    game.drawFastHLine(cx - 14, cy - 5, 4, black);
+    game.drawFastHLine(cx + 10, cy - 5, 4, black);
+    game.drawLine(cx - 8, cy - 3, cx - 5, cy - 1, rgb565(70, 90, 100));  // lens glare
+    // Mustache and chin patch — the bandana stays home.
+    game.fillRoundRect(cx - 7, cy + 4, 14, 4, 2, bBeard);
+    game.fillRect(cx - 1, cy + 4, 2, 2, skin);
+    game.fillRoundRect(cx - 3, cy + 7, 7, 6, 2, bBeard);
     return;
   }
 
@@ -5118,21 +5123,24 @@ void drawFarmerHeadScaled(int cx, int cy, uint8_t character, int s) {
   } else if (character == 9) {
     uint16_t bHair = rgb565(146, 114, 70), bLight = rgb565(184, 152, 100),
              bDark = rgb565(112, 84, 52), bBeard = rgb565(66, 46, 32);
-    game.fillRoundRect(cx + SP(-14), cy + SP(-14), SP(28), SP(34), min(SP(10), SP(16)), bHair);
+    game.fillRoundRect(cx + SP(-14), cy + SP(-14), SP(28), SP(32), min(SP(10), SP(16)), bHair);
     game.fillCircle(cx, cy, SP(10), skin);
     game.fillRoundRect(cx + SP(-12), cy + SP(-14), SP(24), SP(9), min(SP(6), SP(11)), bHair);
-    game.fillRect(cx + SP(-15), cy + SP(-6), SP(5), SP(22), bHair);
-    game.fillRect(cx + SP(10), cy + SP(-6), SP(5), SP(22), bHair);
-    for (int i = 0; i < 5; ++i) {
-      game.fillRect(cx + SP(-15), cy + SP(-4 + i * 5), SP(3), SP(4), bLight);
-      game.fillRect(cx + SP(12), cy + SP(-2 + i * 5), SP(3), SP(4), bDark);
+    for (int i = 0; i < 3; ++i) {
+      int y = cy + SP(-8 + i * 9);
+      game.fillRoundRect(cx + SP(-16), y, SP(4), SP(9), min(SP(2), SP(3)),
+                         i % 2 ? bLight : bDark);
+      game.fillRoundRect(cx + SP(12), y + SP(3), SP(4), SP(9), min(SP(2), SP(3)),
+                         i % 2 ? bDark : bLight);
     }
-    game.fillCircle(cx + SP(-12), cy + SP(16), SP(2), bHair);
-    game.fillCircle(cx + SP(12), cy + SP(17), SP(2), bLight);
-    game.fillRect(cx + SP(-5), cy + SP(-5), SP(3), SP(2), rgb565(58, 46, 34));
-    game.fillRect(cx + SP(2), cy + SP(-5), SP(3), SP(2), rgb565(58, 46, 34));
-    game.drawPixel(cx + SP(-4), cy + SP(-3), rgb565(46, 78, 96));
-    game.drawPixel(cx + SP(4), cy + SP(-3), rgb565(46, 78, 96));
+    game.fillCircle(cx + SP(-12), cy + SP(19), SP(2), bLight);
+    game.fillCircle(cx + SP(12), cy + SP(20), SP(2), bDark);
+    game.fillRoundRect(cx + SP(-10), cy + SP(-6), SP(9), SP(8), min(SP(1), SP(4)), black);
+    game.fillRoundRect(cx + SP(1), cy + SP(-6), SP(9), SP(8), min(SP(1), SP(4)), black);
+    game.drawFastHLine(cx + SP(-1), cy + SP(-4), SP(2), black);
+    game.drawFastHLine(cx + SP(-14), cy + SP(-5), SP(4), black);
+    game.drawFastHLine(cx + SP(10), cy + SP(-5), SP(4), black);
+    game.drawLine(cx + SP(-8), cy + SP(-3), cx + SP(-5), cy + SP(-1), rgb565(70, 90, 100));
     game.fillRoundRect(cx + SP(-7), cy + SP(4), SP(14), SP(4), min(SP(2), SP(3)), bBeard);
     game.fillRect(cx + SP(-1), cy + SP(4), SP(2), SP(2), skin);
     game.fillRoundRect(cx + SP(-3), cy + SP(7), SP(7), SP(6), min(SP(2), SP(3)), bBeard);
@@ -6920,7 +6928,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: Benji + faster intro\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: Benji v2 + Ray-Bans\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
