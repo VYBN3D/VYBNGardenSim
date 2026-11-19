@@ -278,6 +278,7 @@ bool flowerHarvestAnimationRequested = false;
 bool flowerTrimAnimationRequested = false;
 bool moldAnimationRequested = false;
 bool marketGearMode = false;
+uint8_t marketSellStrain = 0;   // strain picked on the market sell shelf
 bool stashGearMode = false;
 
 // Defoliation windows, over-defoliation and overwatering (per harvest).
@@ -410,7 +411,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v21"
+#define FW_VERSION "v23"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -947,6 +948,18 @@ uint8_t nextStashStrain(uint8_t from, int dir) {
   for (uint8_t step = 0; step < STRAIN_COUNT; ++step) {
     from = (from + STRAIN_COUNT + dir) % STRAIN_COUNT;
     if (stashByStrain[from]) return from;
+  }
+  return from;
+}
+
+// Next unlocked strain (direction), walking catalog order — lets pickers
+// scroll every strain you've unlocked, even ones you hold none of yet.
+extern uint8_t strainUnlockedThrough;
+uint8_t nextCatalogStrain(uint8_t from, int dir) {
+  int8_t pos = strainCatalogPos[from];
+  for (uint8_t step = 0; step < STRAIN_COUNT; ++step) {
+    pos = (pos + STRAIN_COUNT + dir) % STRAIN_COUNT;
+    if (pos <= strainUnlockedThrough) return strainCatalogOrder[pos];
   }
   return from;
 }
@@ -2703,13 +2716,6 @@ void drawSeedShopPage() {
   game.drawCentreString(strainNotes[i], 160, 114, 1);
   snprintf(line, sizeof(line), "$%u per 4-pack", strainPrices[i]);
   game.drawCentreString(line, 160, 130, 1);
-  // Seed-count bubble: only on strains you actually hold seeds of.
-  if (!locked && seedsByStrain[i]) {
-    snprintf(line, sizeof(line), "x%u", seedsByStrain[i]);
-    game.fillRoundRect(204, 76, 50, 16, 8, GOLD);
-    game.setTextColor(TFT_BLACK, GOLD);
-    game.drawCentreString(line, 229, 79, 1);
-  }
   if (locked) {
     // Gray LOCKED tag where the seed bubble sits on unlocked cards.
     game.fillRoundRect(186, 76, 68, 16, 8, 0x3187);
@@ -2719,14 +2725,19 @@ void drawSeedShopPage() {
     game.drawCentreString("Harvest your way up to unlock", 160, 150, 1);
   } else {
     game.setTextColor(TEXT_DIM, PANEL);
-    game.drawCentreString(i == strainCatalogOrder[strainUnlockedThrough] ? "Fresh unlock - try it!"
-                          : seedsByStrain[i] ? "BUY to restock" : "BUY to start a batch",
-                          160, 150, 1);
+    if (i == strainCatalogOrder[strainUnlockedThrough]) {
+      game.drawCentreString("Fresh unlock - try it!", 160, 150, 1);
+    } else {
+      char hint[44];
+      snprintf(hint, sizeof(hint), "You own x%u - BUY to %s",
+               seedsByStrain[i], seedsByStrain[i] ? "restock" : "start a batch");
+      game.drawCentreString(hint, 160, 150, 1);
+    }
   }
   drawButton(10, 96, 42, 52, "<", ACCENT_DARK);
   drawButton(268, 96, 42, 52, ">", ACCENT_DARK);
   snprintf(line, sizeof(line), "BUY 4-PACK - $%u", strainPrices[i]);
-  drawButton(58, 184, 204, 22, line, locked ? PANEL_LIGHT : ACCENT_DARK,
+  drawButton(10, 176, 300, 28, line, locked ? PANEL_LIGHT : ACCENT_DARK,
              locked ? TEXT_DIM : TFT_WHITE);
 }
 void drawMarketCard(int y, const char *title, uint16_t quantity, const char *price,
@@ -2761,23 +2772,42 @@ void drawMarketCard(int x, int y, const char *label, const char *value, bool ena
 void drawMarketPage() {
   drawPageTitle("VIRTUAL MARKET",
                 marketGearMode ? "Tap a card to buy gear - smoke buttons below"
-                               : "Tap a card to sell your product");
+                               : "Pick a strain on the shelf, then tap to sell");
   drawButton(12, 72, 144, 19, "SELL", marketGearMode ? PANEL_LIGHT : ACCENT_DARK);
   drawButton(164, 72, 144, 19, "GEAR", marketGearMode ? ACCENT_DARK : PANEL_LIGHT);
   char units[24];
   if (!marketGearMode) {
-    char flowerPrice[24];
-    stashPriceText(flowerPrice, sizeof(flowerPrice));
-    snprintf(units, sizeof(units), "x%u - %s", stashTotal(), flowerPrice);
-    drawMarketCard(5, 94, "SELL 1 FLOWER", units, stashTotal() > 0);
-    snprintf(units, sizeof(units), "x%u - %s", stashTotal(), flowerPrice);
-    drawMarketCard(163, 94, "SELL ALL FLOWER", units, stashTotal() > 0);
+    // Land the shelf on a strain you actually hold (like the planting screen).
+    if (stashTotal() && !stashByStrain[marketSellStrain])
+      marketSellStrain = nextStashStrain(marketSellStrain, 1);
+    // Shelf row: < > cycle the strains that have jars on the shelf.
+    game.fillRoundRect(5, 94, 310, 20, 6, PANEL);
+    game.drawRoundRect(5, 94, 310, 20, 6, PANEL_LIGHT);
+    drawButton(11, 96, 26, 16, "<", PANEL_LIGHT);
+    drawButton(273, 96, 26, 16, ">", PANEL_LIGHT);
+    game.setTextColor(stashTotal() ? TEXT_MAIN : TEXT_DIM, PANEL);
+    char shelf[40];
+    if (stashTotal())
+      snprintf(shelf, sizeof(shelf), "%s  x%u", strainNames[marketSellStrain],
+               stashByStrain[marketSellStrain]);
+    else
+      strlcpy(shelf, "STASH EMPTY", sizeof(shelf));
+    game.drawCentreString(shelf, 160, 99, 1);
+    char units[28];
+    if (stashByStrain[marketSellStrain])
+      snprintf(units, sizeof(units), "x%u - $%u each", stashByStrain[marketSellStrain],
+               flowerUnitPrice(marketSellStrain));
+    else
+      strlcpy(units, "-", sizeof(units));
+    drawMarketCard(5, 118, "SELL 1 FLOWER", units, stashByStrain[marketSellStrain] > 0);
+    snprintf(units, sizeof(units), "x%u", stashByStrain[marketSellStrain]);
+    drawMarketCard(163, 118, "SELL ALL", units, stashByStrain[marketSellStrain] > 0);
     char hashPrice[24];
     hashPriceText(hashPrice, sizeof(hashPrice));
     snprintf(units, sizeof(units), "x%u - %s", hashTotal(), hashPrice);
-    drawMarketCard(5, 136, "SELL 1 HASH", units, hashRoomUnlocked && hashTotal() > 0);
+    drawMarketCard(5, 160, "SELL 1 HASH", units, hashRoomUnlocked && hashTotal() > 0);
     snprintf(units, sizeof(units), "x%u - %s", hashTotal(), hashPrice);
-    drawMarketCard(163, 136, "SELL ALL HASH", units, hashRoomUnlocked && hashTotal() > 0);
+    drawMarketCard(163, 160, "SELL ALL HASH", units, hashRoomUnlocked && hashTotal() > 0);
     return;
   }
 
@@ -3739,14 +3769,18 @@ void drawNearbyPage() {
     char amount[10];
     snprintf(amount, sizeof(amount), "$%s", outgoingCash[0] ? outgoingCash : "0");
     game.drawString(amount, 21, 88, 1);
-    drawNearbyKeyboardRow("1234567890", 10, 21, 107);
-    drawButton(35, 129, 45, 19, "CLR", PANEL_LIGHT);
-    drawButton(105, 129, 70, 19, "000", PANEL_LIGHT);
-    drawButton(259, 129, 45, 19, "DEL", PANEL_LIGHT);
-    drawButton(7, 177, 92, 25, "ALL", PANEL_LIGHT);
-    drawButton(111, 177, 98, 25, "SEND",
+    // Two roomy rows of five digits so every key fits on screen.
+    for (int i = 0; i < 10; ++i) {
+      char key[2] = {'1' + i, '\0'};
+      drawButton(5 + (i % 5) * 62, i < 5 ? 106 : 132, 54, 23, key, PANEL);
+    }
+    drawButton(5, 158, 98, 21, "CLR", PANEL_LIGHT);
+    drawButton(111, 158, 98, 21, "000", PANEL_LIGHT);
+    drawButton(217, 158, 98, 21, "DEL", PANEL_LIGHT);
+    drawButton(5, 182, 98, 21, "ALL", PANEL_LIGHT);
+    drawButton(111, 182, 98, 21, "SEND",
                selectedNearbyPeerValid() && outgoingCash[0] ? ACCENT_DARK : PANEL_LIGHT);
-    drawButton(221, 177, 92, 25, "BACK", PANEL_LIGHT);
+    drawButton(217, 182, 98, 21, "BACK", PANEL_LIGHT);
     return;
   }
 
@@ -4242,8 +4276,10 @@ uint8_t blendQuality(uint8_t oldQ, uint16_t oldUnits, uint8_t newQ, uint16_t new
 }
 
 void sellOneFlower() {
-  // SELL 1 moves the top-shelf jar first.
-  int16_t strain = priciestStashStrain();
+  // SELL 1 moves a jar of the strain picked on the market shelf; falls back
+  // to the top-shelf jar if the picker lands on an empty bucket.
+  int16_t strain = marketSellStrain < STRAIN_COUNT && stashByStrain[marketSellStrain]
+                       ? marketSellStrain : priciestStashStrain();
   if (strain < 0) return;
   --stashByStrain[strain];
   credits += flowerUnitPrice(strain);
@@ -4252,12 +4288,10 @@ void sellOneFlower() {
 }
 
 void sellAllFlowers() {
-  uint32_t total = 0;
-  for (uint8_t i = 0; i < STRAIN_COUNT; ++i) {
-    total += (uint32_t)stashByStrain[i] * flowerUnitPrice(i);
-    stashByStrain[i] = 0;
-  }
-  if (total == 0) return;
+  // SELL ALL empties the picked strain's jars — cycle the shelf for others.
+  if (marketSellStrain >= STRAIN_COUNT || !stashByStrain[marketSellStrain]) return;
+  uint32_t total = (uint32_t)stashByStrain[marketSellStrain] * flowerUnitPrice(marketSellStrain);
+  stashByStrain[marketSellStrain] = 0;
   uint32_t newCredits = (uint32_t)credits + total;
   credits = newCredits > 65535 ? 65535 : (uint16_t)newCredits;
   playCoin();
@@ -5413,12 +5447,12 @@ void handleNearbyTouch(int x, int y) {
   if (nearbyMode == 2) {
     // Arrows on the seeds card pick the strain; card taps send.
     if (y >= 75 && y < 94 && x >= 116 && x < 170) {
-      sendSeedStrain = nextSeededStrain(sendSeedStrain, x < 142 ? -1 : 1);
+      sendSeedStrain = nextCatalogStrain(sendSeedStrain, x < 142 ? -1 : 1);
       render();
       return;
     }
     if (y >= 113 && y < 132 && x >= 116 && x < 170) {
-      sendStashStrain = nextStashStrain(sendStashStrain, x < 142 ? -1 : 1);
+      sendStashStrain = nextCatalogStrain(sendStashStrain, x < 142 ? -1 : 1);
       render();
       return;
     }
@@ -5458,23 +5492,23 @@ void handleNearbyTouch(int x, int y) {
 
   if (nearbyMode == 4) {
     int length = strlen(outgoingCash);
-    if (y >= 107 && y < 126 && x >= 21 && x < 301) {
+    if ((y >= 106 && y < 129) || (y >= 132 && y < 155)) {
       const char *keys = "1234567890";
-      int index = (x - 21) / 28;
-      if (index < 10 && length < 4) {
-        outgoingCash[length] = keys[index];
+      int index = (x - 5) / 62;   // five keys per row, pitch 62
+      if (x >= 5 && index >= 0 && index < 5 && length < 4) {
+        outgoingCash[length] = keys[(y >= 132 ? 5 : 0) + index];
         outgoingCash[length + 1] = '\0';
       }
-    } else if (y >= 129 && y < 148) {
-      if (x >= 35 && x < 80) {
+    } else if (y >= 158 && y < 179) {
+      if (x < 108) {
         outgoingCash[0] = '\0';
-      } else if (x >= 105 && x < 175) {
+      } else if (x < 216) {
         if (length && length < 4) strncat(outgoingCash, "000", 4 - length);
-      } else if (x >= 259) {
+      } else {
         if (length) outgoingCash[length - 1] = '\0';
       }
-    } else if (y >= 177 && y < 205) {
-      if (x < 104) {
+    } else if (y >= 182 && y < 203) {
+      if (x < 108) {
         snprintf(outgoingCash, sizeof(outgoingCash), "%u", credits);
       } else if (x < 216) {
         sendNearbyCash();
@@ -5667,11 +5701,14 @@ void handleTouch(int x, int y) {
           else takeSmokeBreak(1, true);
         }
       } else {
-        // Sell grid: sell-one cards on the left, sell-all cards on the right.
-        if (y >= 94 && y < 132) {
+        // Shelf row cycles the strain; sell-one left, sell-all right.
+        if (y >= 94 && y < 116) {
+          if (x < 40) marketSellStrain = nextStashStrain(marketSellStrain, -1);
+          else if (x >= 270) marketSellStrain = nextStashStrain(marketSellStrain, 1);
+        } else if (y >= 118 && y < 158) {
           if (x < 160) sellOneFlower();
           else sellAllFlowers();
-        } else if (y >= 136 && y < 174) {
+        } else if (y >= 160 && y < 198) {
           if (x < 160) sellOneHash();
           else sellAllHash();
         }
@@ -5769,7 +5806,7 @@ void handleTouch(int x, int y) {
         seedShopCursor = seedShopCursor >= STRAIN_COUNT - 1 ? 0 : seedShopCursor + 1;
         render();
         return;
-      } else if (y >= 184 && y < 206 && seedShopCursor <= strainUnlockedThrough) {
+      } else if (y >= 176 && y < 204 && seedShopCursor <= strainUnlockedThrough) {
         buySeeds(strainCatalogOrder[seedShopCursor]);
       }
       break;
@@ -6613,7 +6650,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: PEST + CARE + SKIP cheats\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: send screens + market shelf\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
