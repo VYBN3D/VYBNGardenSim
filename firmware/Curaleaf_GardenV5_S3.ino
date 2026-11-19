@@ -411,7 +411,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v23"
+#define FW_VERSION "v24"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -2724,15 +2724,15 @@ void drawSeedShopPage() {
     game.setTextColor(TEXT_DIM, PANEL);
     game.drawCentreString("Harvest your way up to unlock", 160, 150, 1);
   } else {
+    // Owned-seed pill: every unlocked card badges how many packs you hold.
+    game.fillRoundRect(202, 146, 56, 20, 8, seedsByStrain[i] ? GOLD : PANEL_LIGHT);
+    game.setTextColor(seedsByStrain[i] ? TFT_BLACK : TEXT_DIM,
+                      seedsByStrain[i] ? GOLD : PANEL_LIGHT);
+    snprintf(line, sizeof(line), "x%u", (seedsByStrain[i] + 3) / 4);   // 4-packs
+    game.drawCentreString(line, 230, 149, 2);
     game.setTextColor(TEXT_DIM, PANEL);
-    if (i == strainCatalogOrder[strainUnlockedThrough]) {
-      game.drawCentreString("Fresh unlock - try it!", 160, 150, 1);
-    } else {
-      char hint[44];
-      snprintf(hint, sizeof(hint), "You own x%u - BUY to %s",
-               seedsByStrain[i], seedsByStrain[i] ? "restock" : "start a batch");
-      game.drawCentreString(hint, 160, 150, 1);
-    }
+    game.drawCentreString(seedsByStrain[i] ? "BUY to restock" : "BUY to start",
+                          160, 150, 1);
   }
   drawButton(10, 96, 42, 52, "<", ACCENT_DARK);
   drawButton(268, 96, 42, 52, ">", ACCENT_DARK);
@@ -6650,7 +6650,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: send screens + market shelf\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: seed pack pill badge\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif

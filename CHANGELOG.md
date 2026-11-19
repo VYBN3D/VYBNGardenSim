@@ -5,6 +5,12 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v24 — seed pack pill badge
+- Seed catalog: every unlocked card gets a pill badge showing how many
+  4-packs you hold ("x1", "x2" — gold when stocked, gray "x0" when not)
+- The newest unlocked strain no longer hides the count behind a
+  "Fresh unlock - try it!" note; the count pill is always shown
+
 ## v23 — market shelf picker + send-screen fixes
 - Market SELL mode: shelf row with `<` `>` arrows picks the stash strain;
   SELL 1 and SELL ALL now act on the picked strain (cycle the shelf for others)
