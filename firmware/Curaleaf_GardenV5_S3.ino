@@ -217,6 +217,17 @@ char wifiSsid[33] = "";
 char wifiPass[65] = "";
 char wifiSsidEdit[33] = "";
 char wifiPassEdit[65] = "";
+// WiFi scan list for the login screen (stage 0 = pick your network).
+char wifiScanSsid[12][33] = {""};
+int8_t wifiScanRssi[12] = {0};
+uint8_t wifiScanCount = 0;
+uint8_t wifiScanPage = 0;          // first visible row (scroll offset)
+bool wifiScanPending = false;
+// Remembered networks: tap one on the scan list to connect without retyping
+// the password. Updates connect on demand and log off when they finish.
+char wifiSavedSsid[4][33] = {""};
+char wifiSavedPass[4][65] = {""};
+uint8_t wifiSavedCount = 0;
 uint8_t wifiLoginStage = 0;            // 0 typing network, 1 typing password
 char otaStatus[64] = "No WiFi yet - tap WIFI LOGIN";
 char otaLatest[16] = "";               // version.txt when a check succeeded
@@ -234,6 +245,7 @@ uint8_t rollingPapers = 0;
 uint8_t growthBoostTicks = 0;
 uint8_t smokeAccessoryUsed = 0;
 uint8_t stonedLevel = 0;  // 0-100, decays one point per game tick
+unsigned long rainbowUntil = 0;  // smoke-break LED flourish end
 const char *stonedLevelNames[10] = {
   "Sober", "Barely Buzzed", "Nice Mellow", "Feeling Fuzzy", "Giggle Fit",
   "Munchies Soon", "Time Is Fake", "Couch Merged", "Deep Thoughts",
@@ -253,6 +265,13 @@ bool displayInverted = false;
 bool hashRoomUnlocked = false;
 bool resetArmed = false;
 bool waterAnimationRequested = false;
+bool waterAnimActive = false;           // non-blocking watering animation
+int waterAnimFrame = 0;
+unsigned long waterAnimNextAt = 0;
+bool farmerOverlayActive = false;       // non-blocking farmer visit overlay
+unsigned long farmerOverlayUntil = 0;
+bool overlayDirty = false;              // garden repaint landed under the overlay
+TFT_eSprite overlaySpr = TFT_eSprite(&canvas);  // atomic pop-out blit buffer
 bool smokeAnimationRequested = false;
 bool hashAnimationRequested = false;
 bool flowerHarvestAnimationRequested = false;
@@ -319,6 +338,8 @@ struct FarmerSaying {
   const char *line1;
   const char *line2;
 };
+
+FarmerSaying farmerOverlaySaying;   // saying shown by the overlay (copyable)
 
 const FarmerSaying farmerSayings[20] = {
   {"Fire!", ""},
@@ -388,7 +409,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v16"
+#define FW_VERSION "v19"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -400,7 +421,10 @@ void drawSettingsRow(int y, const char *label, const char *value);
 // speaker amp (GPIO1, LOW = enabled) driving the 2P speaker connector.
 // There is no GPIO to tone() — the voices are synthesized as 16-bit PCM in
 // audioPump() below, so the lead and the drums both play through the speaker.
-uint8_t musicVolume = 60;  // 0..100% of max loudness; 0 = music off
+uint8_t musicVolume = 40;  // 0..100% of max loudness; 0 = music off
+uint8_t musicVolumeBeforeMute = 40;  // volume restored when the mute toggle is tapped
+bool deathWarnModal = false;            // centered dying-plant popup, any page
+unsigned long deathWarnNextAllowed = 0; // re-popup cooldown after dismissal
 
 struct ChipNote { uint16_t freq; uint8_t steps; };  // freq 0 = rest; steps in 16ths
 struct ChipSong { const ChipNote* notes; uint16_t count; uint16_t stepMs; bool loop; };
@@ -843,12 +867,13 @@ const char *stageName() {
   }
 }
 
-const uint8_t STRAIN_COUNT = 10;
+const uint8_t STRAIN_COUNT = 16;
 // Seeds are held per strain: buy (or receive) different strains and pick
 // which one to plant on the planting screen.
 uint8_t seedsByStrain[STRAIN_COUNT] = {0};
 uint8_t plantStrain = 0;            // strain chosen on the planting screen
 uint8_t sendSeedStrain = 0;         // strain picked in the nearby send-supplies flow
+uint8_t sendStashStrain = 0;        // stash-jar strain picked on the same screen
 
 uint16_t totalSeeds() {
   uint16_t t = 0;
@@ -871,44 +896,74 @@ uint8_t nextSeededStrain(uint8_t from, int dir) {
   return from;
 }
 
+
+// Curaleaf menu staples + cultivation names, easy -> hard display order.
 const char *strainNames[STRAIN_COUNT] = {
-  "Sour Diesel", "Blue Dream", "OG Kush", "Northern Lights", "White Widow",
-  "Granddaddy Purple", "Jack Herer", "Girl Scout Cookies", "Gelato", "Toad Venom"
+  "Northern Lights", "Blue Dream", "Banana Papaya", "Superbuff Cherry", "Jack Herer",
+  "Granddaddy Purple", "White Widow", "Blue Lobster", "OG Kush", "Sour Diesel",
+  "Gelato", "Titan Express", "Zesty Garlic Cookies", "Moon Beam Gelato", "Toad Venom",
+  "Foreign Kushmints"
 };
 const char *strainDifficulty[STRAIN_COUNT] = {
-  "HARD", "MEDIUM", "HARD", "EASY", "MEDIUM", "MEDIUM", "MEDIUM", "HARD", "HARD", "EXPERT"
+  "EASY", "MEDIUM", "MEDIUM", "MEDIUM", "MEDIUM", "MEDIUM", "MEDIUM",
+  "HARD", "HARD", "HARD", "HARD", "HARD", "HARD", "HARD", "EXPERT", "EXPERT"
 };
-const int8_t strainPaceModifier[STRAIN_COUNT] = {-1, 0, -1, 1, 0, 0, 0, -1, -1, -2};
-const uint8_t strainHydrationNeed[STRAIN_COUNT] = {24, 18, 24, 14, 18, 18, 18, 24, 24, 32};
-const uint8_t strainPrices[STRAIN_COUNT] = {18, 12, 18, 8, 12, 12, 12, 18, 18, 30};
+// Menu type + a few words of aroma/effects for the catalog card.
+const char *strainType[STRAIN_COUNT] = {
+  "INDICA", "SATIVA", "HYBRID", "HYBRID", "SATIVA", "INDICA", "HYBRID",
+  "HYBRID", "INDICA", "SATIVA", "HYBRID", "HYBRID", "HYBRID", "HYBRID",
+  "HYBRID", "INDICA"
+};
+const char *strainNotes[STRAIN_COUNT] = {
+  "Earthy pine body calm", "Sweet berry heady lift", "Tropical banana cream",
+  "Cherry gas social buzz", "Pine citrus bright focus", "Grape berry cozy body",
+  "Pepper earth steady buzz", "Blue candy gas", "Fuel pine couch calm",
+  "Diesel citrus daytime fuel", "Creamy dessert calm", "Fast gas express rush",
+  "Garlic cookie funk", "Moonlit cream dessert", "Swamp funk mind melt",
+  "Minty gas deep melt"
+};
+const int8_t strainPaceModifier[STRAIN_COUNT] = {1, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -2, -2};
+const uint8_t strainHydrationNeed[STRAIN_COUNT] = {14, 18, 18, 18, 18, 18, 18, 24, 24, 24, 24, 24, 24, 24, 32, 32};
+const uint8_t strainPrices[STRAIN_COUNT] = {8, 12, 12, 12, 12, 12, 12, 18, 18, 18, 18, 18, 18, 18, 30, 30};
 // Seed catalog runs easy -> hard: EASY first (the starting strain you can
 // afford), then MEDIUM, HARD, EXPERT. Data stays keyed by strain index;
 // these tables only order the catalog, buying, and unlock progression.
 // Order: NL(3) $8 EASY | Blue Dream(1), White Widow(4), GDP(5), Jack(6) $12
-// MEDIUM | Sour Diesel(0), OG Kush(2), GSC(7), Gelato(8) $18 HARD | Toad(9)
-const uint8_t strainCatalogOrder[STRAIN_COUNT] = {3, 1, 4, 5, 6, 0, 2, 7, 8, 9};
-const uint8_t strainCatalogPos[STRAIN_COUNT]  = {5, 1, 6, 0, 2, 3, 4, 7, 8, 9};
+// MEDIUM | Sour Diesel(0), OG Kush(2), GSC(7), Gelato(8) $18 HARD | Titan
+// Express(11) & more $18 HARD | Toad Venom(14), Foreign Kushmints(15) $30
+// EXPERT. Data is keyed in easy -> hard display order, so the catalog runs
+// 0..15; the picker shows every card, locked ones grayed until unlocked.
+const uint8_t strainCatalogOrder[STRAIN_COUNT] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+const uint8_t strainCatalogPos[STRAIN_COUNT]  = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 // Market values scale with grow difficulty: EASY $8 seeds -> $10 flower per
 // unit, MEDIUM $12 -> $14, HARD $18 -> $20, EXPERT $30 -> $32. Hash runs at
 // roughly 2.5x the flower value of the strain it was made from.
-const uint8_t strainFlowerValue[STRAIN_COUNT] = {20, 14, 20, 10, 14, 14, 14, 20, 20, 32};
-const uint8_t strainHashValue[STRAIN_COUNT] = {50, 35, 50, 25, 35, 35, 35, 50, 50, 80};
+const uint8_t strainFlowerValue[STRAIN_COUNT] = {10, 14, 14, 14, 14, 14, 14, 20, 20, 20, 20, 20, 20, 20, 32, 32};
+const uint8_t strainHashValue[STRAIN_COUNT] = {25, 35, 35, 35, 35, 35, 35, 50, 50, 50, 50, 50, 50, 50, 80, 80};
 // Stash and hash are tracked per strain so their sell prices match difficulty.
 uint16_t stashByStrain[STRAIN_COUNT] = {0};
+uint8_t nextStashStrain(uint8_t from, int dir) {
+  for (uint8_t step = 0; step < STRAIN_COUNT; ++step) {
+    from = (from + STRAIN_COUNT + dir) % STRAIN_COUNT;
+    if (stashByStrain[from]) return from;
+  }
+  return from;
+}
+
 uint16_t hashByStrain[STRAIN_COUNT] = {0};
 // Harvest quality: the plant's vigor when harvested grades the batch and sets
 // what it sells for. Quality (0-100 = vigor at harvest) is stored per stash
 // jar and weighted-blended when batches of the same jar merge. Jars saved by
 // older firmware default to 70 = full price.
-uint8_t stashQualityByStrain[STRAIN_COUNT] = {70, 70, 70, 70, 70, 70, 70, 70, 70, 70};
-uint8_t hashQualityByStrain[STRAIN_COUNT]  = {70, 70, 70, 70, 70, 70, 70, 70, 70, 70};
+uint8_t stashQualityByStrain[STRAIN_COUNT] = {70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70};
+uint8_t hashQualityByStrain[STRAIN_COUNT]  = {70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70};
 uint8_t untrimmedQuality = 70;  // vigor of the plant the untrimmed batch came from
 // Defoliation clicks allowed per window: a random number in [min, max] each time.
 // Going past it kills the plant. The button turns red once you reach the minimum.
-const uint8_t strainDefoliateMin[STRAIN_COUNT] = {1, 2, 1, 2, 2, 2, 2, 1, 1, 1};
-const uint8_t strainDefoliateMax[STRAIN_COUNT] = {3, 3, 2, 4, 3, 3, 3, 2, 3, 2};
+const uint8_t strainDefoliateMin[STRAIN_COUNT] = {2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+const uint8_t strainDefoliateMax[STRAIN_COUNT] = {4, 3, 3, 3, 3, 3, 3, 2, 3, 3, 2, 2, 2, 2, 2, 2};
 // Highest hydration a mature plant survives; younger stages tolerate less.
-const uint8_t strainWaterTolerance[STRAIN_COUNT] = {90, 94, 90, 98, 94, 94, 94, 90, 90, 86};
+const uint8_t strainWaterTolerance[STRAIN_COUNT] = {98, 94, 94, 94, 94, 94, 94, 90, 90, 90, 90, 90, 90, 90, 86, 86};
 const uint8_t stageWaterPenalty[5] = {14, 8, 4, 0, 0};
 const uint8_t WATER_AMOUNT = 32;
 const uint8_t WATER_DRAIN_PER_TICK = 3;        // was 1
@@ -1068,6 +1123,14 @@ void saveGame() {
   preferences.putUInt("epoch", (uint32_t)time(nullptr));
   preferences.putString("wSsid", wifiSsid);
   preferences.putString("wPass", wifiPass);
+  preferences.putUChar("wSN", wifiSavedCount);
+  for (uint8_t i = 0; i < wifiSavedCount; ++i) {
+    char key[8];
+    snprintf(key, sizeof(key), "wS%u", i);
+    preferences.putString(key, wifiSavedSsid[i]);
+    snprintf(key, sizeof(key), "wP%u", i);
+    preferences.putString(key, wifiSavedPass[i]);
+  }
   preferences.putBool("started", true);
   lastSave = millis();
 }
@@ -1123,7 +1186,7 @@ void newGame() {
   page = CHARACTER_SELECT;
   gameSpeed = 0;
   displayInverted = false;
-  musicVolume = 60;
+  musicVolume = 40;
   hashRoomUnlocked = false;
   saveGame();
 }
@@ -1166,7 +1229,7 @@ void loadGame() {
     }
     preferences.putBool("migNL", true);
   }
-  harvestedStrainMask = preferences.getUShort("strainMask", 0) & 0x03FF;
+  harvestedStrainMask = preferences.getUShort("strainMask", 0) & 0xFFFF;
   strainUnlockedThrough = min((int)preferences.getUChar("strainOpen", 0), (int)STRAIN_COUNT - 1);
   if (preferences.getBytes("stashArr", stashByStrain, sizeof(stashByStrain)) !=
       sizeof(stashByStrain)) {
@@ -1209,11 +1272,20 @@ void loadGame() {
   }
   strlcpy(wifiSsid, preferences.getString("wSsid", "").c_str(), sizeof(wifiSsid));
   strlcpy(wifiPass, preferences.getString("wPass", "").c_str(), sizeof(wifiPass));
+  wifiSavedCount = preferences.getUChar("wSN", 0);
+  if (wifiSavedCount > 4) wifiSavedCount = 0;
+  for (uint8_t i = 0; i < wifiSavedCount; ++i) {
+    char key[8];
+    snprintf(key, sizeof(key), "wS%u", i);
+    strlcpy(wifiSavedSsid[i], preferences.getString(key, "").c_str(), sizeof(wifiSavedSsid[0]));
+    snprintf(key, sizeof(key), "wP%u", i);
+    strlcpy(wifiSavedPass[i], preferences.getString(key, "").c_str(), sizeof(wifiSavedPass[0]));
+  }
   gameSpeed = preferences.getUChar("gspeed", 0);
   if (gameSpeed > 2) gameSpeed = 0;
   displayInverted = preferences.getBool("invert", false);
-  musicVolume = preferences.getUChar("mvol", 60);
-  if (musicVolume > 100) musicVolume = 60;
+  musicVolume = preferences.getUChar("mvol", 40);
+  if (musicVolume > 100) musicVolume = 40;
   hashRoomUnlocked = preferences.getBool("hashRoom", false);
   pestType = preferences.getUChar("pest", 0);
   pestSeverity = preferences.getUChar("pestLevel", 0);
@@ -1401,8 +1473,28 @@ void drawNearbyInboxTextOnly() {
 // The popup card sits over content that gets partial repaints (garden stats,
 // farmer visits, animations) — re-stamp it at the end of each loop pass so it
 // always reads as the topmost layer.
+void drawFarmerInspector(int pose);
+void drawFarmerSpeechBubble(const FarmerSaying &saying);
+
 void refreshNearbyPopup() {
+  if (farmerOverlayActive) {
+    if ((long)(millis() - farmerOverlayUntil) >= 0 && !waterAnimActive) {
+      farmerOverlayActive = false;
+      restoreFarmerVisitArt();      // repaints the covered regions only
+    } else if (overlayDirty && (page == GARDEN || page == PLANT_VIEW)) {
+      // The farmer and bubble are only re-stamped when something actually
+      // repainted underneath them. Quiet passes draw nothing, so the figure
+      // stops flooding the display bus with continuous redraw traffic.
+      drawFarmerInspector(2);
+      drawFarmerSpeechBubble(farmerOverlaySaying);
+      if (waterAnimActive) farmerOverlayUntil = millis() + 3000UL;
+    }
+  }
+  overlayDirty = false;
   if (nearbyPopupActive) drawNearbyPopup();
+  // The dying-plant modal is stamped LAST so it sits on top of everything:
+  // stats, animations, the farmer overlay and the nearby popup alike.
+  if (deathWarnModal) drawDeathWarnPopup();
 }
 
 void applyNearbyGift(uint8_t item, uint8_t strain) {
@@ -1416,6 +1508,11 @@ void applyNearbyGift(uint8_t item, uint8_t strain) {
     case 2: pestDefenseKits = min(255, (int)pestDefenseKits + 1); snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Received a pest kit"); break;
     case 3: waterPacks = min(255, (int)waterPacks + 2); snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Received 2 water packs"); break;
     case 4: careKits = min(255, (int)careKits + 2); snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Received 2 care kits"); break;
+    case 5:
+      strain = min((int)strain, (int)STRAIN_COUNT - 1);
+      stashByStrain[strain] = min(65535, (int)stashByStrain[strain] + 1);
+      snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Received a %s jar", strainNames[strain]);
+      break;
     default: return;
   }
   saveGame();
@@ -2427,6 +2524,7 @@ void drawPlant() {
 }
 
 void drawGardenSidePanel() {
+  overlayDirty = true;   // repaints the region the farmer overlay sits over
   game.fillRect(178, HEADER_H, 142, 144, BG);
   game.setTextColor(TEXT_MAIN, BG);
   game.drawString(stageName(), 188, 36, 2);
@@ -2458,6 +2556,28 @@ void drawGardenZoomChip() {
   game.drawCentreString("TAP TO ZOOM", 42, 34, 1);
 }
 
+// Centered dying-plant modal, shown once per crisis on any page. Tap
+// dismisses and jumps to the garden where the plant can be treated.
+void drawDeathWarnPopup() {
+  if (!plantActive) { deathWarnModal = false; return; }
+  game.fillRoundRect(30, 86, 260, 96, 10, 0xA000);
+  game.drawRoundRect(30, 86, 260, 96, 10, TFT_YELLOW);
+  game.setTextColor(TFT_YELLOW, 0xA000);
+  if (hydration < 20) {
+    game.drawCentreString("YOUR PLANT IS DYING!", 160, 96, 2);
+    game.setTextColor(GOLD, 0xA000);
+    game.drawCentreString(waterPacks ? "USE A WATER PACK NOW" : "BUY WATER PACKS",
+                        160, 120, 1);
+  } else {
+    game.drawCentreString("PEST CRISIS!", 160, 96, 2);
+    game.setTextColor(GOLD, 0xA000);
+    game.drawCentreString(pestDefenseKits ? "USE PEST DEFENSE NOW" : "BUY PEST DEFENSE",
+                        160, 120, 1);
+  }
+  game.setTextColor(TFT_WHITE, 0xA000);
+  game.drawCentreString("TAP TO GO HELP YOUR PLANT", 160, 140, 1);
+}
+
 void drawGardenPage() {
   drawPlant();
   drawGardenZoomChip();
@@ -2467,6 +2587,7 @@ void drawGardenPage() {
 }
 
 void drawGardenActions() {
+  overlayDirty = true;
   game.fillRect(0, ACTION_Y, SCREEN_W, ACTION_H, BG);
   if (plantActive) {
     // Green = good to use, red = using it now can kill the plant,
@@ -2521,6 +2642,17 @@ void drawSupplyCard(int x, int y, const char *label, const char *value, bool aff
   game.drawCentreString(value, x + 76, y + 25, 1);
 }
 
+// Card for the send-supplies grid: same look as the supply shop cards.
+void drawSendCard(int x, int y, int w, int h, const char *label,
+                  const char *value, bool enabled) {
+  game.fillRoundRect(x, y, w, h, 5, PANEL);
+  game.drawRoundRect(x, y, w, h, 5, enabled ? ACCENT : PANEL_LIGHT);
+  game.setTextColor(enabled ? TEXT_MAIN : TEXT_DIM, PANEL);
+  game.drawCentreString(label, x + w / 2, y + h / 2 - 12, 1);
+  game.setTextColor(enabled ? GOLD : TEXT_DIM, PANEL);
+  game.drawCentreString(value, x + w / 2, y + h / 2 + 2, 1);
+}
+
 void drawSuppliesPage() {
   drawPageTitle("SUPPLY SHOP", "Tap a card to buy or open");
   char owned[24];
@@ -2541,71 +2673,61 @@ void drawSuppliesPage() {
 // Seed catalog as a 5x2 grid of big strain cards — the whole card is the tap
 // target (buySeeds validates unlock/credits/stock), so there are no tiny
 // BUY buttons to miss.
-void drawSeedCard(int x, int y, uint8_t i, bool unlocked, bool selected) {
-  const char *tag = "BUY";
-  uint16_t fill = selected ? 0x1C64 : PANEL;
-  bool chipTag = false;
-  if (!unlocked) {
-    tag = "LOCK";
-  } else if (seedsByStrain[i]) {
-    tag = "OWNED";
-  } else if (totalSeeds() > 95) {
-    tag = "FULL";
-  } else if (credits < strainPrices[i]) {
-    tag = "$$$";
-  } else {
-    chipTag = true;   // affordable right now — highlight it
-  }
-  game.fillRoundRect(x, y, 152, 25, 5, fill);
-  game.drawRoundRect(x, y, 152, 25, 5, selected || chipTag ? ACCENT : PANEL_LIGHT);
-  game.setTextColor(unlocked ? TEXT_MAIN : TEXT_DIM, fill);
-  game.drawString(strainNames[i], x + 5, y + 3, 1);
-  if (chipTag) {
-    game.fillRect(x + 104, y + 2, 46, 11, ACCENT_DARK);
-    game.setTextColor(TFT_WHITE, ACCENT_DARK);
-    game.drawCentreString(tag, x + 127, y + 3, 1);
-  } else {
-    game.setTextColor(!unlocked || tag[0] == '$' || tag[0] == 'F' || tag[0] == 'H' ? TEXT_DIM
-                      : tag[0] == 'O' ? GOLD : TEXT_DIM, fill);
-    game.drawRightString(tag, x + 147, y + 3, 1);
-  }
-  if (unlocked) {
-    game.setTextColor(i == 3 ? rgb565(153, 225, 129) : GOLD, fill);
-    game.drawString(strainDifficulty[i], x + 5, y + 14, 1);
-    char price[12];
-    snprintf(price, sizeof(price), "$%u / 4", strainPrices[i]);
-    game.setTextColor(TEXT_DIM, fill);
-    game.drawRightString(price, x + 147, y + 14, 1);
-  } else {
-    game.setTextColor(TEXT_DIM, fill);
-    game.drawRightString("Harvest to unlock", x + 147, y + 14, 1);
-  }
-}
+// Seed catalog as a picker like the grower select: one giant strain card
+// cycled with < and > arrows; BUY grabs a 4-pack of that strain.
+uint8_t seedShopCursor = 0;   // position across the whole catalog (0..15)
 
 void drawSeedShopPage() {
-  char subtitle[48];
+  char subtitle[40];
   uint8_t harvestedCount = 0;
   for (uint8_t i = 0; i < STRAIN_COUNT; ++i) {
     if (harvestedStrainMask & ((uint16_t)1 << i)) ++harvestedCount;
   }
-  if (harvestedCount < 9) {
-    snprintf(subtitle, sizeof(subtitle), "Harvested %u/9; next: %s", harvestedCount,
-             strainNames[strainCatalogOrder[strainUnlockedThrough]]);
-  } else if (harvestedCount == 9) {
-    strlcpy(subtitle, "9/9 harvested; Toad Venom unlocked", sizeof(subtitle));
-  } else {
-    strlcpy(subtitle, "All 10 strains harvested", sizeof(subtitle));
-  }
+  snprintf(subtitle, sizeof(subtitle), "Harvested %u/%u", harvestedCount, STRAIN_COUNT);
   drawPageTitle("SEED CATALOG", subtitle);
-  for (uint8_t p = 0; p < STRAIN_COUNT; ++p) {
-    uint8_t i = strainCatalogOrder[p];   // display in easy -> hard order
-    int x = (p % 2) ? 163 : 5;
-    int y = 70 + (p / 2) * 27;
-    bool unlocked = p <= strainUnlockedThrough;
-    drawSeedCard(x, y, i, unlocked, seedsByStrain[i] > 0);
+  uint8_t i = strainCatalogOrder[seedShopCursor];
+  bool locked = seedShopCursor > strainUnlockedThrough;
+  game.fillRoundRect(58, 72, 204, 110, 10, PANEL);
+  game.drawRoundRect(58, 72, 204, 110, 10, locked ? 0x3187
+                     : seedsByStrain[i] ? ACCENT : PANEL_LIGHT);
+  // Locked cards stay fully readable, just grayed out.
+  int nameFont = strlen(strainNames[i]) > 14 ? 1 : 2;
+  game.setTextColor(locked ? TEXT_DIM : TEXT_MAIN, PANEL);
+  game.drawCentreString(strainNames[i], 160, nameFont == 2 ? 80 : 83, nameFont);
+  char line[40];
+  snprintf(line, sizeof(line), "%s - %s", strainType[i], strainDifficulty[i]);
+  game.setTextColor(locked ? TEXT_DIM : GOLD, PANEL);
+  game.drawCentreString(line, 160, 102, 1);
+  game.setTextColor(TEXT_DIM, PANEL);
+  game.drawCentreString(strainNotes[i], 160, 114, 1);
+  snprintf(line, sizeof(line), "$%u per 4-pack", strainPrices[i]);
+  game.drawCentreString(line, 160, 130, 1);
+  // Seed-count bubble: only on strains you actually hold seeds of.
+  if (!locked && seedsByStrain[i]) {
+    snprintf(line, sizeof(line), "x%u", seedsByStrain[i]);
+    game.fillRoundRect(204, 76, 50, 16, 8, GOLD);
+    game.setTextColor(TFT_BLACK, GOLD);
+    game.drawCentreString(line, 229, 79, 1);
   }
+  if (locked) {
+    // Gray LOCKED tag where the seed bubble sits on unlocked cards.
+    game.fillRoundRect(186, 76, 68, 16, 8, 0x3187);
+    game.setTextColor(TEXT_DIM, 0x3187);
+    game.drawCentreString("LOCKED", 220, 79, 1);
+    game.setTextColor(TEXT_DIM, PANEL);
+    game.drawCentreString("Harvest your way up to unlock", 160, 150, 1);
+  } else {
+    game.setTextColor(TEXT_DIM, PANEL);
+    game.drawCentreString(i == strainCatalogOrder[strainUnlockedThrough] ? "Fresh unlock - try it!"
+                          : seedsByStrain[i] ? "BUY to restock" : "BUY to start a batch",
+                          160, 150, 1);
+  }
+  drawButton(10, 96, 42, 52, "<", ACCENT_DARK);
+  drawButton(268, 96, 42, 52, ">", ACCENT_DARK);
+  snprintf(line, sizeof(line), "BUY 4-PACK - $%u", strainPrices[i]);
+  drawButton(58, 184, 204, 22, line, locked ? PANEL_LIGHT : ACCENT_DARK,
+             locked ? TEXT_DIM : TFT_WHITE);
 }
-
 void drawMarketCard(int y, const char *title, uint16_t quantity, const char *price,
                     bool enabled) {
   game.fillRoundRect(10, y, 300, 52, 6, PANEL);
@@ -2676,37 +2798,47 @@ void drawMarketPage() {
 }
 
 void drawStashPage() {
-  drawPageTitle("STASH & INVENTORY", stashGearMode ? "Lifestyle gear and temporary effects" : "Everything in your garden room");
-  drawButton(20, 68, 136, 19, "GARDEN", stashGearMode ? PANEL_LIGHT : ACCENT_DARK);
-  drawButton(164, 68, 136, 19, "GEAR", stashGearMode ? ACCENT_DARK : PANEL_LIGHT);
-  if (stashGearMode) {
-    const char *gearLabels[] = {"Reusable bong", "Lighters", "Rolling papers", "Growth boost ticks"};
-    uint16_t gearValues[] = {bongs, lighters, rollingPapers, growthBoostTicks};
-    for (int i = 0; i < 4; ++i) {
-      int y = 99 + i * 20;
-      game.setTextColor(TEXT_DIM, BG);
-      game.drawString(gearLabels[i], 18, y, 1);
-      char value[12];
-      snprintf(value, sizeof(value), "%u", gearValues[i]);
-      game.setTextColor(i == 3 && gearValues[i] ? ACCENT : TEXT_MAIN, BG);
-      game.drawRightString(value, 302, y, 1);
-      game.drawFastHLine(16, y + 11, 288, 0x3187);
-    }
-    return;
-  }
-  const char *labels[] = {"Water packs", "Care kits", "Pest defense", "Seeds", "Untrimmed flowers",
-                          "Trimmed flowers", "Hash units", "Remediation kits", "Active plants"};
-  uint16_t values[] = {waterPacks, careKits, pestDefenseKits, totalSeeds(), untrimmedUnits,
-                       stashTotal(), hashTotal(), remediationKits, plantActive ? PLANTS_PER_ROOM : 0};
-  for (int i = 0; i < 9; ++i) {
-    int y = 91 + i * 10;
+  drawPageTitle("STASH", "Your flower, hash and jars");
+  // Product stats only - supplies and gear counts live on their buy cards.
+  const char *labels[] = {"Untrimmed flowers", "Trimmed flowers", "Hash units", "Active plants"};
+  uint16_t values[] = {untrimmedUnits, stashTotal(), hashTotal(), plantActive ? PLANTS_PER_ROOM : 0};
+  for (int i = 0; i < 4; ++i) {
+    int y = 72 + i * 12;
     game.setTextColor(TEXT_DIM, BG);
     game.drawString(labels[i], 18, y, 1);
     char value[12];
     snprintf(value, sizeof(value), "%u", values[i]);
-    game.setTextColor((i == 4 || i == 5 || i == 6) ? GOLD : TEXT_MAIN, BG);
+    game.setTextColor(i == 1 || i == 2 ? GOLD : TEXT_MAIN, BG);
     game.drawRightString(value, 302, y, 1);
-    game.drawFastHLine(16, y + 9, 288, 0x3187);
+    game.drawFastHLine(16, y + 10, 288, 0x3187);
+  }
+  // Stash jars by strain: strain name, unit count and quality grade.
+  game.setTextColor(TEXT_DIM, BG);
+  game.drawString("STASH JARS BY STRAIN", 18, 124, 1);
+  int shown = 0;
+  int extra = 0;
+  for (uint8_t i = 0; i < STRAIN_COUNT; ++i) {
+    if (!stashByStrain[i]) continue;
+    if (shown >= 4) { ++extra; continue; }
+    int y = 136 + shown * 12;
+    game.setTextColor(TEXT_MAIN, BG);
+    game.drawString(strainNames[i], 18, y, 1);
+    char row[30];
+    snprintf(row, sizeof(row), "x%u - %s", stashByStrain[i],
+             gradeName(sellGradeForQuality(stashQualityByStrain[i])));
+    game.setTextColor(GOLD, BG);
+    game.drawRightString(row, 302, y, 1);
+    game.drawFastHLine(16, y + 10, 288, 0x3187);
+    ++shown;
+  }
+  if (shown == 0) {
+    game.setTextColor(TEXT_DIM, BG);
+    game.drawCentreString("No jars yet - trim and stash your harvest", 160, 146, 1);
+  } else if (extra) {
+    game.setTextColor(TEXT_DIM, BG);
+    char more[24];
+    snprintf(more, sizeof(more), "+%u more strain%s", extra, extra == 1 ? "" : "s");
+    game.drawRightString(more, 302, 184, 1);
   }
   if (untrimmedUnits > 0) {
     drawButton(92, 187, 136, 17, "TRIM FLOWERS", ACCENT_DARK);
@@ -2810,14 +2942,42 @@ static const char *OTA_BIN_NAME = "Curaleaf_GardenV5_S3.ino.bin";
 static bool wifiConnected() { return WiFi.status() == WL_CONNECTED; }
 
 static void otaRestoreRadio() {
-  // Hand the radio back the way the garden likes it (BLE/Nearby first).
+  // Hand the radio back the way the garden likes it: fully log off WiFi
+  // (updates connect on demand, they never stay associated).
+  WiFi.disconnect();
   if (nearbyReady) {
     WiFi.mode(WIFI_STA);
     esp_wifi_set_ps(WIFI_PS_NONE);
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    esp_now_init();                    // re-arm Nearby after the WiFi session
   } else {
     WiFi.mode(WIFI_OFF);
   }
+}
+static void wifiRememberNetwork(const char *ssid, const char *pass) {
+  for (uint8_t i = 0; i < wifiSavedCount; ++i)
+    if (!strcmp(wifiSavedSsid[i], ssid)) {
+      strlcpy(wifiSavedPass[i], pass, sizeof(wifiSavedPass[0]));
+      return;
+    }
+  if (wifiSavedCount < 4) {
+    strlcpy(wifiSavedSsid[wifiSavedCount], ssid, sizeof(wifiSavedSsid[0]));
+    strlcpy(wifiSavedPass[wifiSavedCount], pass, sizeof(wifiSavedPass[0]));
+    ++wifiSavedCount;
+    return;
+  }
+  // List full: drop the oldest entry and append this one.
+  for (uint8_t i = 0; i < 3; ++i) {
+    strlcpy(wifiSavedSsid[i], wifiSavedSsid[i + 1], sizeof(wifiSavedSsid[0]));
+    strlcpy(wifiSavedPass[i], wifiSavedPass[i + 1], sizeof(wifiSavedPass[0]));
+  }
+  strlcpy(wifiSavedSsid[3], ssid, sizeof(wifiSavedSsid[0]));
+  strlcpy(wifiSavedPass[3], pass, sizeof(wifiSavedPass[0]));
+}
+static int wifiSavedIndex(const char *ssid) {
+  for (uint8_t i = 0; i < wifiSavedCount; ++i)
+    if (!strcmp(wifiSavedSsid[i], ssid)) return i;
+  return -1;
 }
 
 static void otaConnectToSaved(uint16_t waitMs) {
@@ -2834,6 +2994,7 @@ static void otaCheckUpdate() {
   otaConnectToSaved(9000);
   if (!wifiConnected()) {
     snprintf(otaStatus, sizeof(otaStatus), "No WiFi - check name/password");
+    otaRestoreRadio();
     return;
   }
   snprintf(otaStatus, sizeof(otaStatus), "Checking for updates ...");
@@ -2870,6 +3031,7 @@ static void otaInstallUpdate() {
   otaConnectToSaved(9000);
   if (!wifiConnected()) {
     snprintf(otaStatus, sizeof(otaStatus), "No WiFi - check name/password");
+    otaRestoreRadio();
     return;
   }
   snprintf(otaStatus, sizeof(otaStatus), "Downloading update ... KEEP STILL");
@@ -2945,75 +3107,209 @@ static void drawOtaPage() {
   }
 }
 
-static void drawWifiLoginPage() {
-  drawPageTitle("WIFI LOGIN",
-                wifiLoginStage == 0 ? "Type your network name" : "Type the WiFi password");
-  OTA_GFX.fillRoundRect(14, 82, 292, 22, 4, PANEL);
-  OTA_GFX.setTextColor(TEXT_MAIN, PANEL);
-  if (wifiLoginStage == 0) {
-    OTA_GFX.drawString(wifiSsidEdit, 21, 88, 1);
-  } else {
-    char dots[65];
-    size_t length = strlen(wifiPassEdit);
-    memset(dots, '*', length);
-    dots[length] = '\0';
-    OTA_GFX.drawString(dots, 21, 88, 1);
+
+// Scan helpers: async scan, results deduped by SSID and sorted by signal.
+static void wifiScanFill() {
+  int found = WiFi.scanComplete();
+  if (found < 0) return;
+  int rssi[24], index[24];
+  uint8_t kept = 0;
+  for (int i = 0; i < found && kept < 24; ++i) {
+    String ssid = WiFi.SSID(i);
+    if (!ssid.length()) continue;
+    bool dup = false;
+    for (uint8_t k = 0; k < kept; ++k)
+      if (ssid == WiFi.SSID(index[k])) { dup = true; break; }
+    if (dup) continue;
+    rssi[kept] = WiFi.RSSI(i);
+    index[kept] = i;
+    ++kept;
   }
+  for (uint8_t a = 1; a < kept; ++a)                      // strongest first
+    for (uint8_t b = a; b > 0 && rssi[b] > rssi[b - 1]; --b) {
+      int t = rssi[b]; rssi[b] = rssi[b - 1]; rssi[b - 1] = t;
+      int t2 = index[b]; index[b] = index[b - 1]; index[b - 1] = t2;
+    }
+  for (uint8_t k = 0; k < kept && wifiScanCount < 12; ++k) {
+    strlcpy(wifiScanSsid[wifiScanCount], WiFi.SSID(index[k]).c_str(), 33);
+    wifiScanRssi[wifiScanCount++] = (int8_t)rssi[k];
+  }
+  WiFi.scanDelete();
+  wifiScanPage = 0;
+}
+
+static void wifiScanStart() {
+  wifiScanCount = 0;
+  wifiScanPage = 0;
+  wifiScanPending = true;
+  WiFi.mode(WIFI_STA);
+  WiFi.scanNetworks(true, false, false, 120U);   // async, keeps the UI alive
+}
+
+static void drawWifiLoginPage() {
+  drawPageTitleSmall("WIFI LOGIN",
+                wifiLoginStage == 0 ? "Pick a network (* = saved)" : "Type the WiFi password");
+  if (wifiLoginStage == 0) {
+    // Stage 0: live network list instead of typing the SSID.
+    if (wifiScanPending) {
+      OTA_GFX.setTextColor(TEXT_DIM, BG);
+      OTA_GFX.drawCentreString("Scanning for networks...", 160, 100, 1);
+    } else if (!wifiScanCount) {
+      OTA_GFX.setTextColor(TEXT_DIM, BG);
+      OTA_GFX.drawCentreString("No networks found", 160, 100, 1);
+    }
+    for (uint8_t i = 0; i < 6; ++i) {
+      uint8_t row = wifiScanPage + i;
+      if (row >= wifiScanCount) break;
+      int y = 60 + i * 17;
+      OTA_GFX.setTextColor(TEXT_MAIN, BG);
+      char name[34];
+      snprintf(name, sizeof(name), "%s%s", wifiScanSsid[row],
+               wifiSavedIndex(wifiScanSsid[row]) >= 0 ? " *" : "");
+      OTA_GFX.drawString(name, 16, y, 1);
+      char meta[10];
+      snprintf(meta, sizeof(meta), "%d", wifiScanRssi[row]);
+      OTA_GFX.setTextColor(TEXT_DIM, BG);
+      OTA_GFX.drawRightString(meta, 304, y, 1);
+      OTA_GFX.drawFastHLine(14, y + 9, 292, 0x3187);
+    }
+    if (wifiScanCount > 6) {
+      OTA_GFX.setTextColor(TEXT_DIM, BG);
+      uint8_t last = wifiScanPage + 6 > wifiScanCount ? wifiScanCount : wifiScanPage + 6;
+      char more[20];
+      snprintf(more, sizeof(more), "%u-%u of %u", wifiScanPage + 1, last, wifiScanCount);
+      OTA_GFX.drawRightString(more, 304, 162, 1);
+    }
+    drawButton(7, 168, 72, 28, "RESCAN", PANEL_LIGHT);
+    drawButton(85, 168, 72, 28, "<", PANEL_LIGHT);
+    drawButton(163, 168, 72, 28, ">", PANEL_LIGHT);
+    drawButton(241, 168, 72, 28, "CANCEL", PANEL_LIGHT);
+    return;
+  }
+  // Stage 1: password keyboard (unchanged).
+  OTA_GFX.fillRoundRect(14, 60, 292, 18, 4, PANEL);
+  OTA_GFX.setTextColor(TEXT_MAIN, PANEL);
+  char dots[65];
+  size_t length = strlen(wifiPassEdit);
+  memset(dots, '*', length);
+  dots[length] = '\0';
+  OTA_GFX.drawString(dots, 21, 65, 1);
   drawFullKeyboard(nameKbMode);
-  drawButton(7, 177, 92, 25, "SPACE", PANEL_LIGHT);
-  drawButton(111, 177, 98, 25, wifiLoginStage == 0 ? "NEXT" : "CONNECT", ACCENT_DARK);
-  drawButton(221, 177, 92, 25, "CANCEL", PANEL_LIGHT);
+  drawButton(7, 168, 92, 28, "SPACE", PANEL_LIGHT);
+  drawButton(111, 168, 98, 28, "CONNECT", ACCENT_DARK);
+  drawButton(221, 168, 92, 28, "CANCEL", PANEL_LIGHT);
 }
 
 static void touchWifiLogin(int x, int y) {
+  if (wifiLoginStage == 0) {
+    // Stage 0: tap a network row to pick it, or the buttons below.
+    if (y >= 60 && y < 158) {
+      uint8_t row = wifiScanPage + (y - 60) / 17;
+      if (row < wifiScanCount) {
+        int saved = wifiSavedIndex(wifiScanSsid[row]);
+        if (saved >= 0) {
+          // Saved network: connect right away, no password needed.
+          strlcpy(wifiSsid, wifiScanSsid[row], sizeof(wifiSsid));
+          strlcpy(wifiPass, wifiSavedPass[saved], sizeof(wifiPass));
+          snprintf(otaStatus, sizeof(otaStatus), "Connecting to %s ...", wifiSsid);
+          page = OTA_PAGE;
+          render();
+          otaConnectToSaved(10000);
+          if (!wifiConnected()) {
+            // Password stopped working: fall back to typing it again.
+            strlcpy(wifiSsidEdit, wifiSsid, sizeof(wifiSsidEdit));
+            wifiPassEdit[0] = '\0';
+            wifiLoginStage = 1;
+            snprintf(otaStatus, sizeof(otaStatus),
+                     "Password rejected - type it again");
+            page = WIFI_LOGIN;
+            otaRestoreRadio();
+            render();
+            return;
+          }
+          strlcpy(wifiSsidEdit, wifiSsid, sizeof(wifiSsidEdit));
+          wifiPassEdit[0] = '\0';
+          saveGame();                  // keep the last-used network on file
+          snprintf(otaStatus, sizeof(otaStatus), "Connected to %s - logged off", wifiSsid);
+          otaRestoreRadio();
+          render();
+          return;
+        }
+        strlcpy(wifiSsidEdit, wifiScanSsid[row], sizeof(wifiSsidEdit));
+        wifiPassEdit[0] = '\0';
+        wifiLoginStage = 1;            // password next
+        render();
+      }
+      return;
+    }
+    if (y >= 168 && y < 196) {
+      if (x < 80) {
+        wifiScanStart();
+        render();
+      } else if (x < 160) {
+        if (wifiScanPage) wifiScanPage -= 6;
+        render();
+      } else if (x < 238) {
+        if (wifiScanPage + 6 < wifiScanCount) wifiScanPage += 6;
+        render();
+      } else {
+        wifiScanPending = false;
+        WiFi.scanDelete();
+        otaRestoreRadio();
+        page = OTA_PAGE;
+        render();
+      }
+      return;
+    }
+    return;
+  }
+  // Stage 1: keyboard for the password.
   char key = fullKeyboardKey(x, y, nameKbMode);
   if (key) {
-    char *buf = wifiLoginStage == 0 ? wifiSsidEdit : wifiPassEdit;
-    size_t cap = wifiLoginStage == 0 ? sizeof(wifiSsidEdit) : sizeof(wifiPassEdit);
-    size_t length = strlen(buf);
-    if (length < cap - 1) { buf[length] = key; buf[length + 1] = '\0'; }
+    size_t length = strlen(wifiPassEdit);
+    if (length < sizeof(wifiPassEdit) - 1) { wifiPassEdit[length] = key; wifiPassEdit[length + 1] = '\0'; }
     render();
     return;
   }
-  if (y >= 151 && y < 170 && x >= 259) {
-    char *buf = wifiLoginStage == 0 ? wifiSsidEdit : wifiPassEdit;
-    size_t length = strlen(buf);
-    if (length) buf[length - 1] = '\0';
-  } else if (y >= 177 && y < 205) {
+  if (y >= 138 && y < 164 && x >= 263) {
+    size_t length = strlen(wifiPassEdit);
+    if (length) wifiPassEdit[length - 1] = '\0';
+  } else if (y >= 168 && y < 196) {
     if (x < 104) {
-      char *buf = wifiLoginStage == 0 ? wifiSsidEdit : wifiPassEdit;
-      size_t cap = wifiLoginStage == 0 ? sizeof(wifiSsidEdit) : sizeof(wifiPassEdit);
-      size_t length = strlen(buf);
-      if (length > 0 && length < cap - 1) { buf[length] = ' '; buf[length + 1] = '\0'; }
+      size_t length = strlen(wifiPassEdit);
+      if (length > 0 && length < sizeof(wifiPassEdit) - 1) { wifiPassEdit[length] = ' '; wifiPassEdit[length + 1] = '\0'; }
     } else if (x < 216) {
-      if (wifiLoginStage == 0) {
-        if (wifiSsidEdit[0]) { wifiLoginStage = 1; render(); }
-      } else if (wifiSsidEdit[0]) {
+      if (wifiSsidEdit[0]) {
         strlcpy(wifiSsid, wifiSsidEdit, sizeof(wifiSsid));
         strlcpy(wifiPass, wifiPassEdit, sizeof(wifiPass));
-        saveGame();                    // creds ride along with the save
         snprintf(otaStatus, sizeof(otaStatus), "Connecting to %s ...", wifiSsid);
         page = OTA_PAGE;
         render();
         otaConnectToSaved(10000);
+        if (wifiConnected()) {
+          wifiRememberNetwork(wifiSsid, wifiPass);
+          saveGame();                  // creds + remembered network on file
+        }
         snprintf(otaStatus, sizeof(otaStatus),
-                 wifiConnected() ? "Connected to %s" : "Could not connect to %s", wifiSsid);
+                 wifiConnected() ? "Connected to %s - logged off"
+                                 : "Could not connect to %s", wifiSsid);
         otaRestoreRadio();
         render();
+      } else {
+        page = OTA_PAGE;
       }
-    } else {
-      page = OTA_PAGE;
+      render();
     }
-    render();
   }
 }
 
 static void touchOtaPage(int x, int y) {
   if (y >= 130 && y < 156 && x < 160) {
     wifiLoginStage = 0;
-    strlcpy(wifiSsidEdit, wifiSsid, sizeof(wifiSsidEdit));  // prefill saved name
+    wifiSsidEdit[0] = '\0';
     wifiPassEdit[0] = '\0';
     page = WIFI_LOGIN;
+    wifiScanStart();
     render();
   } else if (y >= 130 && y < 156) {
     otaCheckUpdate();
@@ -3068,14 +3364,14 @@ static void applyCheatCode() {
 }
 
 static void drawCheatPage() {
-  drawPageTitle("CHEATS", cheatFeedback[0] ? cheatFeedback : "Type a code, then tap ACTIVATE");
-  game.fillRoundRect(14, 82, 292, 22, 4, PANEL);
+  drawPageTitleSmall("CHEATS", cheatFeedback[0] ? cheatFeedback : "Type a code, then tap ACTIVATE");
+  game.fillRoundRect(14, 60, 292, 18, 4, PANEL);
   game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(cheatEdit, 21, 88, 1);
+  game.drawString(cheatEdit, 21, 65, 1);
   drawFullKeyboard(nameKbMode);
-  drawButton(7, 177, 92, 25, "SPACE", PANEL_LIGHT);
-  drawButton(111, 177, 98, 25, "ACTIVATE", ACCENT_DARK);
-  drawButton(221, 177, 92, 25, "BACK", PANEL_LIGHT);
+  drawButton(7, 168, 92, 28, "SPACE", PANEL_LIGHT);
+  drawButton(111, 168, 98, 28, "ACTIVATE", ACCENT_DARK);
+  drawButton(221, 168, 92, 28, "BACK", PANEL_LIGHT);
 }
 
 static void touchCheatPage(int x, int y) {
@@ -3086,10 +3382,10 @@ static void touchCheatPage(int x, int y) {
     render();
     return;
   }
-  if (y >= 151 && y < 170 && x >= 259) {
+  if (y >= 138 && y < 164 && x >= 263) {
     size_t length = strlen(cheatEdit);
     if (length) cheatEdit[length - 1] = '\0';
-  } else if (y >= 177 && y < 205) {
+  } else if (y >= 168 && y < 196) {
     if (x < 104) {
       size_t length = strlen(cheatEdit);
       if (length > 0 && length < sizeof(cheatEdit) - 1 &&
@@ -3118,7 +3414,7 @@ void drawOptionsCard(int x, int y, int w, int h, const char *label,
   game.setTextColor(TEXT_MAIN, fill);
   game.drawCentreString(label, x + w / 2, y + 4, 2);
   game.setTextColor(GOLD, fill);
-  game.drawCentreString(value, x + w / 2, y + 27, 1);
+  game.drawCentreString(value, x + w / 2, y + h - 15, 1);
 }
 
 void drawOptionsPage() {
@@ -3126,17 +3422,18 @@ void drawOptionsPage() {
   if (musicVolume) snprintf(volLabel, sizeof(volLabel), "%u%%", musicVolume);
   else strlcpy(volLabel, "OFF", sizeof(volLabel));
   // Grid sits below the settings title band (title + subtitle cover y 28..68).
-  drawOptionsCard(5, 72, 152, 40, "GAME SPEED",
+  // 4-inch board: stretch the option cards and push UPDATE toward the bottom.
+  drawOptionsCard(5, 64, 152, 42, "GAME SPEED",
                   gameSpeed == 0 ? "RELAXED" : gameSpeed == 1 ? "QUICK" : "EXTREME", PANEL);
-  drawOptionsCard(163, 72, 152, 40, "MUSIC", volLabel, PANEL);
-  drawOptionsCard(5, 116, 152, 40, "FAST HARVEST", "TAP", ACCENT_DARK);
-  drawOptionsCard(163, 116, 152, 40, "CHEATS", "TAP", PANEL_LIGHT);
-  // Bottom rows: RESET GAME with the WiFi/OTA update button below it.
+  drawOptionsCard(163, 64, 152, 42, "MUSIC", volLabel, PANEL);
+  drawOptionsCard(5, 110, 152, 42, "FAST HARVEST", "TAP", ACCENT_DARK);
+  drawOptionsCard(163, 110, 152, 42, "CHEATS", "TAP", PANEL_LIGHT);
+  // Wide gap between RESET GAME and UPDATE so UPDATE taps never hit reset.
   // Must stay above the nav bar (NAV_Y = 207) or the nav touch handler
   // steals the taps (that was the STASH-jump bug).
-  drawButton(5, 160, 310, 24, resetArmed ? "TAP AGAIN TO RESET GAME" : "RESET GAME",
+  drawButton(5, 156, 310, 16, resetArmed ? "TAP AGAIN TO RESET GAME" : "RESET GAME",
              resetArmed ? RED : PANEL_LIGHT);
-  drawButton(5, 188, 310, 18, "UPDATE - WIFI / OTA", PANEL_LIGHT);
+  drawButton(5, 180, 310, 26, "UPDATE - WIFI / OTA", PANEL_LIGHT);
 }
 
 // Grower menu, opened from the Curaleaf leaf: your grower as an ID card.
@@ -3157,14 +3454,14 @@ void drawGrowerMenuPage() {
 }
 
 void drawGrowerNamePage() {
-  drawPageTitle("SET GROWER NAME", "Tap ABC for caps, #+_ for symbols");
-  game.fillRoundRect(14, 82, 292, 22, 4, PANEL);
+  drawPageTitleSmall("SET GROWER NAME", "Tap ABC for caps, #+_ for symbols");
+  game.fillRoundRect(14, 60, 292, 18, 4, PANEL);
   game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(growerNameEdit, 21, 88, 1);
+  game.drawString(growerNameEdit, 21, 65, 1);
   drawFullKeyboard(nameKbMode);
-  drawButton(7, 177, 92, 25, "SPACE", PANEL_LIGHT);
-  drawButton(111, 177, 98, 25, "SAVE", ACCENT_DARK);
-  drawButton(221, 177, 92, 25, "CANCEL", PANEL_LIGHT);
+  drawButton(7, 168, 92, 28, "SPACE", PANEL_LIGHT);
+  drawButton(111, 168, 98, 28, "SAVE", ACCENT_DARK);
+  drawButton(221, 168, 92, 28, "CANCEL", PANEL_LIGHT);
 }
 
 void drawCharacterSelectPage() {
@@ -3172,6 +3469,19 @@ void drawCharacterSelectPage() {
   game.fillScreen(BG);
   game.setTextColor(TEXT_MAIN, BG);
   game.drawCentreString("CHOOSE YOUR GROWER", 160, 8, 2);
+  // Speaker toggle so the music can be muted before picking a grower.
+  game.fillRoundRect(266, 2, 48, 22, 5, PANEL_LIGHT);
+  game.drawRoundRect(266, 2, 48, 22, 5, PANEL);
+  game.fillRect(272, 10, 4, 7, TEXT_MAIN);
+  game.fillTriangle(276, 13, 281, 6, 281, 21, TEXT_MAIN);
+  if (musicVolume) {
+    game.drawLine(286, 8, 289, 5, TEXT_MAIN);
+    game.drawLine(286, 13, 291, 13, TEXT_MAIN);
+    game.drawLine(286, 18, 289, 21, TEXT_MAIN);
+  } else {
+    game.drawLine(286, 6, 294, 14, RED);
+    game.drawLine(294, 6, 286, 14, RED);
+  }
   uint8_t c = characterSelectIndex % 9;
   game.fillRoundRect(58, 30, 204, 160, 10, PANEL);
   game.drawRoundRect(58, 30, 204, 160, 10, ACCENT_DARK);
@@ -3237,6 +3547,13 @@ bool selectedNearbyPeerValid() {
          millis() - nearbyPeers[selectedNearbyPeer].lastSeen < 20000UL;
 }
 
+// Compact title band for keyboard pages: frees room for bigger keys.
+void drawPageTitleSmall(const char *title, const char *subtitle) {
+  game.setTextColor(TEXT_MAIN, BG);
+  game.drawString(title, 12, 34, 2);
+  game.setTextColor(TEXT_DIM, BG);
+  game.drawString(subtitle, 12, 52, 1);
+}
 void drawNearbyPeerTarget() {
   if (!selectedNearbyPeerValid()) {
     game.setTextColor(RED, BG);
@@ -3254,7 +3571,7 @@ void drawNearbyPeerTarget() {
 void drawNearbyKeyboardRow(const char *keys, int count, int startX, int y) {
   for (int i = 0; i < count; ++i) {
     char key[2] = {keys[i], '\0'};
-    drawButton(startX + i * 28, y, 26, 19, key, PANEL);
+    drawButton(startX + i * 31, y, 29, 26, key, PANEL);
   }
 }
 
@@ -3283,12 +3600,12 @@ void keyboardRowStrings(uint8_t mode, const char *&r1, const char *&r2,
 void drawFullKeyboard(uint8_t mode) {
   const char *r1, *r2, *r3;
   keyboardRowStrings(mode, r1, r2, r3);
-  drawNearbyKeyboardRow(r1, 10, 21, 107);
-  drawNearbyKeyboardRow(r2, 9, 35, 129);
-  drawNearbyKeyboardRow(r3, 7, 63, 151);
-  drawButton(259, 151, 45, 19, "DEL", PANEL_LIGHT);
-  drawButton(7, 129, 26, 19, mode == 2 ? "abc" : "#+_", PANEL_LIGHT);
-  drawButton(7, 151, 26, 19, mode == 0 ? "ABC" : "abc", PANEL_LIGHT);
+  drawNearbyKeyboardRow(r1, 10, 5, 82);
+  drawButton(5, 110, 29, 26, mode == 2 ? "abc" : "#+_", PANEL_LIGHT);
+  drawNearbyKeyboardRow(r2, 9, 40, 110);
+  drawButton(5, 138, 29, 26, mode == 0 ? "ABC" : "abc", PANEL_LIGHT);
+  drawNearbyKeyboardRow(r3, 7, 40, 138);
+  drawButton(263, 138, 52, 26, "DEL", PANEL_LIGHT);
 }
 
 // Shared touch resolution for the full keyboard. Returns the key to append
@@ -3297,57 +3614,91 @@ void drawFullKeyboard(uint8_t mode) {
 char fullKeyboardKey(int x, int y, uint8_t &mode) {
   const char *r1, *r2, *r3;
   keyboardRowStrings(mode, r1, r2, r3);
-  if (y >= 107 && y < 126 && x >= 21 && x < 301) {
-    int index = (x - 21) / 28;
+  if (y >= 82 && y < 108) {
+    int index = (x - 5) / 31;
     return index < 10 ? r1[index] : 0;
   }
-  if (y >= 129 && y < 148) {
-    if (x >= 7 && x < 33) {
+  if (y >= 110 && y < 136) {
+    if (x >= 5 && x < 34) {
       mode = mode == 2 ? 0 : 2;   // #+_ <-> letters
       return 0;
     }
-    int index = (x - 35) / 28;
-    return x < 287 && index < 9 ? r2[index] : 0;
+    int index = (x - 40) / 31;
+    return x >= 40 && index < 9 ? r2[index] : 0;
   }
-  if (y >= 151 && y < 170) {
-    if (x >= 7 && x < 33) {
+  if (y >= 138 && y < 164) {
+    if (x >= 5 && x < 34) {
       mode = mode == 1 ? 0 : 1;   // ABC <-> abc (exits symbols to lowercase)
       return 0;
     }
-    int index = (x - 63) / 28;
-    return x < 257 && index < 7 ? r3[index] : 0;
+    int index = (x - 40) / 31;
+    return x >= 40 && x < 259 && index < 7 ? r3[index] : 0;
   }
   return 0;
 }
 
 void drawNearbyPage() {
   if (nearbyMode == 1) {
-    drawPageTitle("SEND A MESSAGE", "Tap ABC for caps, #+_ for symbols");
+    drawPageTitleSmall("SEND A MESSAGE", "Tap ABC for caps, #+_ for symbols");
     drawNearbyPeerTarget();
-    game.fillRoundRect(14, 82, 292, 22, 4, PANEL);
+    game.fillRoundRect(14, 60, 292, 18, 4, PANEL);
     game.setTextColor(TEXT_MAIN, PANEL);
-    game.drawString(outgoingMessage, 21, 88, 1);
+    game.drawString(outgoingMessage, 21, 65, 1);
     drawFullKeyboard(msgKbMode);
-    drawButton(7, 177, 92, 25, "SPACE", PANEL_LIGHT);
-    drawButton(111, 177, 98, 25, "SEND", selectedNearbyPeerValid() ? ACCENT_DARK : PANEL_LIGHT);
-    drawButton(221, 177, 92, 25, "BACK", PANEL_LIGHT);
+    drawButton(7, 168, 92, 28, "SPACE", PANEL_LIGHT);
+    drawButton(111, 168, 98, 28, "SEND", selectedNearbyPeerValid() ? ACCENT_DARK : PANEL_LIGHT);
+    drawButton(221, 168, 92, 28, "BACK", PANEL_LIGHT);
     return;
   }
 
   if (nearbyMode == 2) {
-    drawPageTitle("SEND SUPPLIES", "Tap a pack to send it to the selected player");
-    drawNearbyPeerTarget();
-    drawShopCard(84, "Seeds +4", seedsByStrain[sendSeedStrain] >= 4 ? "SEND" : "NEED",
-                 seedsByStrain[sendSeedStrain] >= 4 && selectedNearbyPeerValid());
-    // Strain picker: the gift carries THIS strain to the receiver.
-    game.setTextColor(ACCENT, PANEL);
-    game.drawRightString(strainNames[sendSeedStrain], 192, 90, 1);
-    drawButton(196, 85, 21, 19, "<", PANEL_LIGHT);
-    drawButton(220, 85, 21, 19, ">", PANEL_LIGHT);
-    drawShopCard(109, "Pest defense +1", pestDefenseKits ? "SEND" : "NEED", pestDefenseKits > 0 && selectedNearbyPeerValid());
-    drawShopCard(134, "Water packs +2", waterPacks >= 2 ? "SEND" : "NEED", waterPacks >= 2 && selectedNearbyPeerValid());
-    drawShopCard(159, "Care kits +2", careKits >= 2 ? "SEND" : "NEED", careKits >= 2 && selectedNearbyPeerValid());
-    drawButton(7, 184, 152, 19, "SEND MONEY", selectedNearbyPeerValid() ? ACCENT_DARK : PANEL_LIGHT);
+    // Supply-shop-style card grid for gifting.
+    char target[44];
+    if (selectedNearbyPeerValid()) {
+      const NearbyPeer &peer = nearbyPeers[selectedNearbyPeer];
+      snprintf(target, sizeof(target), "To %s %02X%02X",
+               peer.grower, peer.mac[4], peer.mac[5]);
+    } else {
+      strlcpy(target, "Pick an online player first", sizeof(target));
+    }
+    drawPageTitle("SEND SUPPLIES", target);
+    // Full-width seeds card: < > pick the strain, tap the card to send.
+    bool seedsReady = seedsByStrain[sendSeedStrain] >= 4 && selectedNearbyPeerValid();
+    game.fillRoundRect(5, 70, 310, 34, 5, PANEL);
+    game.drawRoundRect(5, 70, 310, 34, 5, seedsReady ? ACCENT : PANEL_LIGHT);
+    game.setTextColor(TEXT_MAIN, PANEL);
+    game.drawString("SEEDS +4", 14, 75, 2);
+    drawButton(116, 75, 26, 19, "<", PANEL_LIGHT);
+    drawButton(144, 75, 26, 19, ">", PANEL_LIGHT);
+    char seedLine[34];
+    snprintf(seedLine, sizeof(seedLine), "%s x%u", strainNames[sendSeedStrain],
+             seedsByStrain[sendSeedStrain]);
+    game.setTextColor(seedsReady ? GOLD : TEXT_DIM, PANEL);
+    game.drawRightString(seedLine, 306, 81, 1);
+    // Full-width stash-jar card: gift a trimmed jar of any strain you hold.
+    bool stashReady = stashByStrain[sendStashStrain] > 0 && selectedNearbyPeerValid();
+    game.fillRoundRect(5, 108, 310, 34, 5, PANEL);
+    game.drawRoundRect(5, 108, 310, 34, 5, stashReady ? ACCENT : PANEL_LIGHT);
+    game.setTextColor(TEXT_MAIN, PANEL);
+    game.drawString("STASH JAR", 14, 113, 2);
+    drawButton(116, 113, 26, 19, "<", PANEL_LIGHT);
+    drawButton(144, 113, 26, 19, ">", PANEL_LIGHT);
+    snprintf(seedLine, sizeof(seedLine), "%s x%u", strainNames[sendStashStrain],
+             stashByStrain[sendStashStrain]);
+    game.setTextColor(stashReady ? GOLD : TEXT_DIM, PANEL);
+    game.drawRightString(seedLine, 306, 119, 1);
+    char ownedVal[12];
+    snprintf(ownedVal, sizeof(ownedVal), "x%u", pestDefenseKits);
+    drawSendCard(5, 146, 100, 34, "PEST +1", ownedVal,
+                 pestDefenseKits > 0 && selectedNearbyPeerValid());
+    snprintf(ownedVal, sizeof(ownedVal), "x%u", waterPacks);
+    drawSendCard(110, 146, 100, 34, "WATER +2", ownedVal,
+                 waterPacks >= 2 && selectedNearbyPeerValid());
+    snprintf(ownedVal, sizeof(ownedVal), "x%u", careKits);
+    drawSendCard(215, 146, 100, 34, "CARE +2", ownedVal,
+                 careKits >= 2 && selectedNearbyPeerValid());
+    drawButton(7, 184, 152, 19, "SEND MONEY",
+               selectedNearbyPeerValid() ? ACCENT_DARK : PANEL_LIGHT);
     drawButton(165, 184, 148, 19, "BACK", PANEL_LIGHT);
     return;
   }
@@ -3406,6 +3757,11 @@ void sendNearbyGift(uint8_t item) {
     case 2: if (!pestDefenseKits) return; giftName = "a pest kit"; break;
     case 3: if (waterPacks < 2) return; giftName = "2 water packs"; break;
     case 4: if (careKits < 2) return; giftName = "2 care kits"; break;
+    case 5:
+      if (!stashByStrain[sendStashStrain]) return;
+      giftName = "a stash jar";
+      strainTag[0] = '0' + sendStashStrain;
+      break;
     default: return;
   }
   if (sendNearbyPacket(nearbyPeers[selectedNearbyPeer].mac, PACKET_GIFT, item, strainTag)) {
@@ -3416,6 +3772,7 @@ void sendNearbyGift(uint8_t item) {
     else if (item == 2) { --pestDefenseKits; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent %s", giftName); }
     else if (item == 3) { waterPacks -= 2; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent %s", giftName); }
     else if (item == 4) { careKits -= 2; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent %s", giftName); }
+    else if (item == 5) { --stashByStrain[sendStashStrain]; snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Sent a %s jar", strainNames[sendStashStrain]); }
     saveGame();
   } else {
     snprintf(lastNearbyMessage, sizeof(lastNearbyMessage), "Send failed; supplies kept");
@@ -3513,6 +3870,7 @@ void render(bool presentNow) {
     }
   }
   if (presentNow) presentFrame();
+  overlayDirty = true;   // a full repaint always lands under the overlay
 }
 
 uint8_t waterToleranceNow() {
@@ -3566,6 +3924,7 @@ uint8_t defoliateButtonState() {
 
 void killPlant(uint8_t reason) {
   deathReason = reason;
+  deathWarnModal = false;
   plantDeathAnimationRequested = true;
   deathLedUntil = millis() + 5000;  // red back-LED flag for the kill event
   startSong(&deathJingle);  // sad descending chiptune over the cutscene
@@ -3800,6 +4159,7 @@ void takeSmokeBreak(uint8_t product, bool makeJoint) {
   }
   growthBoostTicks = min(99, growthBoostTicks + 10);
   stonedLevel = min(100, stonedLevel + 25);
+  rainbowUntil = millis() + 5000UL;  // 5s LED flourish, then fade
   smokeAnimationRequested = true;
   lastFarmerVisitAt = millis();
   saveGame();
@@ -3958,27 +4318,36 @@ void drawWateringFrame(int frame) {
   }
 }
 
-void animateWatering() {
+void startWateringAnimation() {
+  // Non-blocking: draw the base scene and frame 0 now; the loop steps the
+  // remaining frames so taps and nav stay live throughout.
+  farmerOverlayActive = false;  // the base redraw wipes the farmer anyway
+  waterAnimActive = true;
+  waterAnimFrame = 1;
   game.fillScreen(BG);
   drawHeader();
   drawPlant();
   drawGardenSidePanel();
-  // Keep the bottom of the page alive through the animation: the watering
-  // frames only paint the middle band (y 112..165), so the action row and
-  // nav bar can stay visible the whole time.
   drawGardenActions();
   drawNav();
   game.setTextColor(GOLD, BG);
   game.drawString("WATERING THE ROOM", 12, 37, 1);
-  for (int frame = 0; frame < 8; ++frame) {
-    drawWateringFrame(frame);
+  drawWateringFrame(0);
+  presentFrame();
+  waterAnimNextAt = millis() + 420;
+}
+
+void stepWateringAnimation() {
+  if (page != GARDEN) { waterAnimActive = false; return; }  // navigated away
+  if ((long)(millis() - waterAnimNextAt) < 0) return;
+  if (waterAnimFrame < 8) {
+    drawWateringFrame(waterAnimFrame++);
     presentFrame();
-    pumpDelay(420);
+    waterAnimNextAt = millis() + 420;
+  } else {
+    waterAnimActive = false;
+    render();   // clean full garden redraw; frame trails gone
   }
-  // No tap-to-continue: finish with one clean full garden redraw so the
-  // frame trails vanish and the updated stats are on screen — then the
-  // game simply carries on.
-  render();
 }
 
 void drawFarmerInspector(int pose) {
@@ -4017,28 +4386,158 @@ void drawFarmerSpeechBubble(const FarmerSaying &saying) {
   if (saying.line2[0]) game.drawCentreString(saying.line2, bubbleX + 66, bubbleY + 22, 1);
 }
 
-void animateFarmerVisit() {
-  const FarmerSaying &saying = farmerSayings[random(20)];
+void startFarmerOverlay() {
+  // Non-blocking: draw the farmer and bubble once; refreshNearbyPopup()
+  // re-stamps them only after a repaint and restores the art when he leaves.
+  farmerOverlaySaying = farmerSayings[random(20)];
+  farmerOverlayActive = true;
+  farmerOverlayUntil = millis() + 4200UL;
+  overlayDirty = false;
   drawFarmerInspector(2);
-  drawFarmerSpeechBubble(saying);
+  drawFarmerSpeechBubble(farmerOverlaySaying);
   presentFrame();
-  pumpDelay(2300);
-  // Restore by redrawing the exact content that was covered. The display's
-  // GRAM read-back returns corrupted colors, so pixel snapshots are not
-  // usable; redrawing identical pixels is visually flicker-free. Only the
-  // covered regions are touched — stats, buttons, and header are not redrawn
-  // unless the overlay actually covered them.
-  if (page == GARDEN) {
-    drawPlant();              // plant scene incl. bubble/farmer area (x 0-177)
-    drawGardenZoomChip();     // bubble's left edge overlapped the chip
-    drawGardenSidePanel();    // bubble/farmer overlapped the panel's left edge
-  } else if (page == PLANT_VIEW) {
-    // One region spanning the bubble and the farmer, art restored 1:1.
-    if (!drawPlantBitmapFullScreenRegion(180, 79, 314, 209)) {
-      restoreFullScreenFallbackRegion();
+}
+
+// ---- v17: atomic pop-out ---------------------------------------------------
+// The old pop-out repainted the covered art region row by row straight to the
+// panel — a visible progressive rebuild flash every time the farmer left.
+// These helpers rebuild just the covered region into an offscreen sprite
+// (PSRAM-backed on these boards) and blit it in ONE push, so the swap from
+// "farmer standing there" to "clean garden" is a single atomic frame. They
+// return false when the SD art or the sprite is unavailable, and the caller
+// falls back to the old repaint path.
+bool restoreGardenArtBlit() {
+  if (!sdMounted || !plantActive) return false;
+  char filename[16];
+  snprintf(filename, sizeof(filename), "/PLANT%d.BMP", stageForGrowth());
+  bool drawn = false;
+  // Farmer + speech bubble cover the art region x55..178, y30..172.
+  const int px0 = SX(55), px1 = SX(178), py0 = SY(30), py1 = SY(172);
+  const int sprW = px1 - px0, sprH = py1 - py0;
+  switchToSdBus();
+  File file = SD.open(filename, FILE_READ);
+  if (file) {
+    file.seek(10);
+    uint32_t pixelOffset = readLE32(file);
+    file.seek(18);
+    int32_t width = (int32_t)readLE32(file);
+    int32_t height = (int32_t)readLE32(file);
+    file.seek(28);
+    uint16_t bitsPerPixel = readLE16(file);
+    uint32_t compression = readLE32(file);
+    if (width == ART_W && abs(height) == ART_H &&
+        bitsPerPixel == 24 && compression == 0) {
+      uint32_t rowBytes = ((uint32_t)width * 3 + 3) & ~3UL;
+      file.seek(pixelOffset);
+      if (overlaySpr.createSprite(sprW, sprH)) {
+        // Sprite buffers hold pixels in panel wire order (that is how the
+        // sprite draw functions store them, and pushSprite sends the buffer
+        // raw) — so swap on the way IN, not on the way out.
+        overlaySpr.setSwapBytes(true);
+        drawn = true;
+        for (int row = 0; row < ART_H && drawn; ++row) {
+          if (file.read(bmpRow, rowBytes) != rowBytes) { drawn = false; break; }
+          int screenY = height > 0 ? (ART_H - 1 - row) : row;
+          for (int col = 0; col < ART_W; ++col)
+            rgbRow[col] = rgb565(bmpRow[col * 3 + 2], bmpRow[col * 3 + 1],
+                                 bmpRow[col * 3 + 0]);
+          for (int col = 0; col < ART_W; ++col) {
+            int a = SX(col), b = SX(col + 1);
+            for (int px = a; px < b; ++px) panelRow[px] = rgbRow[col];
+          }
+          int pyA = SY(HEADER_H + screenY), pyB = SY(HEADER_H + screenY + 1);
+          for (int py = pyA; py < pyB; ++py) {
+            if (py < py0 || py >= py1) continue;
+            overlaySpr.pushImage(0, py - py0, sprW, 1, &panelRow[px0]);
+          }
+        }
+      }
     }
+    file.close();
   }
-  presentFrame();
+  switchToTouchBus();
+  if (drawn) {
+    // pushSprite sends the sprite buffer raw (it forces the panel swap off),
+    // and the buffer now holds wire-order pixels, so colours come out right.
+    overlaySpr.pushSprite(px0, py0);
+  }
+  overlaySpr.deleteSprite();
+  return drawn;
+}
+
+bool restorePlantViewArtBlit() {
+  if (!sdMounted || !plantActive) return false;
+  char filename[16];
+  snprintf(filename, sizeof(filename), "/PLANT%d.BMP", stageForGrowth());
+  bool drawn = false;
+  // The overlay covers x180..314, y79..209 on the fullscreen view.
+  const int px0 = SX(180), px1 = SX(314), py0 = SY(79), py1 = SY(209);
+  const int sprW = px1 - px0, sprH = py1 - py0;
+  switchToSdBus();
+  File file = SD.open(filename, FILE_READ);
+  if (file) {
+    file.seek(10);
+    uint32_t pixelOffset = readLE32(file);
+    file.seek(18);
+    int32_t width = (int32_t)readLE32(file);
+    int32_t height = (int32_t)readLE32(file);
+    file.seek(28);
+    uint16_t bitsPerPixel = readLE16(file);
+    uint32_t compression = readLE32(file);
+    if (width == ART_W && abs(height) == ART_H &&
+        bitsPerPixel == 24 && compression == 0) {
+      uint32_t rowBytes = ((uint32_t)width * 3 + 3) & ~3UL;
+      file.seek(pixelOffset);
+      if (overlaySpr.createSprite(sprW, sprH)) {
+        overlaySpr.setSwapBytes(true);   // store wire-order pixels (see above)
+        drawn = true;
+        for (int row = 0; row < ART_H && drawn; ++row) {
+          if (file.read(bmpRow, rowBytes) != rowBytes) { drawn = false; break; }
+          for (int col = 0; col < ART_W; ++col) {
+            uint8_t b = bmpRow[col * 3 + 0];
+            uint8_t g = bmpRow[col * 3 + 1];
+            uint8_t r = bmpRow[col * 3 + 2];
+            rgbRow[col] = rgb565(r, g, b);
+            int x0 = SX((col * SCREEN_W) / ART_W);
+            int x1 = SX(((col + 1) * SCREEN_W) / ART_W);
+            for (int x = x0; x < x1; ++x) scaledPlantRow[x] = rgbRow[col];
+          }
+          int screenY = height > 0 ? ART_H - 1 - row : row;
+          int y0 = (screenY * SCREEN_H) / ART_H;
+          int y1 = ((screenY + 1) * SCREEN_H) / ART_H;
+          int pyA = SY(y0), pyB = SY(y1);
+          for (int py = pyA; py < pyB; ++py) {
+            if (py < py0 || py >= py1) continue;
+            overlaySpr.pushImage(0, py - py0, sprW, 1, &scaledPlantRow[px0]);
+          }
+        }
+      }
+    }
+    file.close();
+  }
+  switchToTouchBus();
+  if (drawn) {
+    overlaySpr.pushSprite(px0, py0);
+  }
+  overlaySpr.deleteSprite();
+  return drawn;
+}
+
+void restoreFarmerVisitArt() {
+  // The covered regions are repainted 1:1 (GRAM read-back is unreliable).
+  if (page == GARDEN) {
+    if (!restoreGardenArtBlit()) drawPlant();   // blit failed: old slow path
+    drawGardenZoomChip();    // the bubble covered the chip's right edge
+    drawGardenSidePanel();   // ...and reached into the stats panel
+  } else if (page == PLANT_VIEW) {
+    if (!restorePlantViewArtBlit()) {
+      if (!drawPlantBitmapFullScreenRegion(180, 79, 314, 209)) {
+        restoreFullScreenFallbackRegion();
+      }
+    }
+  } else {
+    render();   // page changed mid-overlay: a clean repaint clears him
+  }
 }
 
 void beginCutsceneScene() {
@@ -4842,6 +5341,8 @@ void handleNearbyTouch(int x, int y) {
         nearbyMode = 2;
         sendSeedStrain = seedStrain;
         if (!seedsByStrain[sendSeedStrain]) sendSeedStrain = nextSeededStrain(sendSeedStrain, 1);
+        sendStashStrain = seedStrain;
+        if (!stashByStrain[sendStashStrain]) sendStashStrain = nextStashStrain(sendStashStrain, 1);
       } else if (x >= 214) {
         nearbyMode = 3;
       }
@@ -4860,9 +5361,9 @@ void handleNearbyTouch(int x, int y) {
       return;
     }
     int length = strlen(outgoingMessage);
-    if (y >= 151 && y < 170 && x >= 259) {
+    if (y >= 138 && y < 164 && x >= 263) {
       if (length) outgoingMessage[length - 1] = '\0';
-    } else if (y >= 177 && y < 205) {
+    } else if (y >= 168 && y < 196) {
       if (x < 104) {
         if (length > 0 && length < (int)sizeof(outgoingMessage) - 1 &&
             outgoingMessage[length - 1] != ' ') {
@@ -4884,17 +5385,38 @@ void handleNearbyTouch(int x, int y) {
   }
 
   if (nearbyMode == 2) {
-    // Strain arrows on the seeds card (tap < or > to pick what you send).
-    if (y >= 84 && y < 105 && x >= 196 && x < 245) {
-      sendSeedStrain = nextSeededStrain(sendSeedStrain, x < 220 ? -1 : 1);
+    // Arrows on the seeds card pick the strain; card taps send.
+    if (y >= 75 && y < 94 && x >= 116 && x < 170) {
+      sendSeedStrain = nextSeededStrain(sendSeedStrain, x < 142 ? -1 : 1);
       render();
       return;
     }
-    if (x >= 245 && y >= 84 && y < 105) sendNearbyGift(1);
-    else if (x >= 245 && y >= 109 && y < 130) sendNearbyGift(2);
-    else if (x >= 245 && y >= 134 && y < 155) sendNearbyGift(3);
-    else if (x >= 245 && y >= 159 && y < 180) sendNearbyGift(4);
-    else if (y >= 184 && y < 205) {
+    if (y >= 113 && y < 132 && x >= 116 && x < 170) {
+      sendStashStrain = nextStashStrain(sendStashStrain, x < 142 ? -1 : 1);
+      render();
+      return;
+    }
+    if (y >= 70 && y < 104) {
+      if (selectedNearbyPeerValid() && seedsByStrain[sendSeedStrain] >= 4)
+        sendNearbyGift(1);
+      return;
+    }
+    if (y >= 108 && y < 142) {
+      if (selectedNearbyPeerValid() && stashByStrain[sendStashStrain] > 0)
+        sendNearbyGift(5);
+      return;
+    }
+    if (y >= 146 && y < 180) {
+      if (x < 110) {
+        if (selectedNearbyPeerValid() && pestDefenseKits) sendNearbyGift(2);
+      } else if (x < 215) {
+        if (selectedNearbyPeerValid() && waterPacks >= 2) sendNearbyGift(3);
+      } else if (selectedNearbyPeerValid() && careKits >= 2) {
+        sendNearbyGift(4);
+      }
+      return;
+    }
+    if (y >= 184 && y < 203) {
       if (x < 162) {
         if (selectedNearbyPeerValid()) {
           nearbyMode = 4;
@@ -4954,10 +5476,10 @@ void handleGrowerNameTouch(int x, int y) {
     appendGrowerNameLetter(key);
     return;
   }
-  if (y >= 151 && y < 170 && x >= 259) {
+  if (y >= 138 && y < 164 && x >= 263) {
     int length = strlen(growerNameEdit);
     if (length) growerNameEdit[length - 1] = '\0';
-  } else if (y >= 177 && y < 205) {
+  } else if (y >= 168 && y < 196) {
     int length = strlen(growerNameEdit);
     if (x < 104) {
       if (length > 0 && length < sizeof(growerNameEdit) - 1 &&
@@ -4999,7 +5521,31 @@ void chooseFarmerCharacter(uint8_t character) {
 }
 
 void handleTouch(int x, int y) {
+  if (deathWarnModal) {
+    // Any tap dismisses the crisis popup and jumps to the garden.
+    deathWarnModal = false;
+    deathWarnNextAllowed = millis() + 90000UL;
+    if (plantActive) page = GARDEN;
+    render();
+    return;
+  }
   if (page == CHARACTER_SELECT) {
+    if (y >= 2 && y < 24 && x >= 266) {
+      // Speaker toggle: mute now, tap again to restore the volume.
+      if (musicVolume) {
+        musicVolumeBeforeMute = musicVolume;
+        musicVolume = 0;
+        chipToneOff();
+        drumToneOff();
+        activeSong = nullptr;
+        drumPlaying = false;
+      } else {
+        musicVolume = musicVolumeBeforeMute ? musicVolumeBeforeMute : 40;
+        startSong(backgroundSong);
+      }
+      render();
+      return;
+    }
     if (y >= 88 && y < 138 && x < 54) {
       characterSelectIndex = (characterSelectIndex + 8) % 9;  // wrap: 9 growers
       render();
@@ -5106,39 +5652,37 @@ void handleTouch(int x, int y) {
       }
       break;
     case STASH:
-      if (y >= 68 && y < 89) {
-        stashGearMode = x >= 160;
-      } else if (!stashGearMode && untrimmedUnits > 0 && y >= 187 && y < 205) {
+      if (untrimmedUnits > 0 && y >= 187 && y < 205) {
         page = TRIM_ROOM;
       }
       break;
     case OPTIONS:
       // Big-card grid: each card is its own tap target, anywhere on the card.
-      if (y >= 72 && y < 112 && x < 160) {
+      if (y >= 64 && y < 106 && x < 160) {
         gameSpeed = (gameSpeed + 1) % 3;   // RELAXED -> QUICK -> EXTREME
         lastGameTick = millis();
         saveGame();
-      } else if (y >= 72 && y < 112) {
+      } else if (y >= 64 && y < 106) {
         // Volume steps: OFF -> 10 -> 20 -> ... -> 100 -> OFF
         musicVolume = musicVolume == 0 ? 10 : musicVolume >= 100 ? 0 : musicVolume + 10;
         if (musicVolume) startSong(backgroundSong);
         else { chipToneOff(); drumToneOff(); activeSong = nullptr; drumPlaying = false; }
         saveGame();
-      } else if (y >= 116 && y < 156 && x < 160) {
+      } else if (y >= 110 && y < 152 && x < 160) {
         prepareDemoHarvest();
-      } else if (y >= 116 && y < 156) {
+      } else if (y >= 110 && y < 152) {
         page = CHEAT_CODE;               // cheat console
         cheatEdit[0] = '\0';
         cheatFeedback[0] = '\0';
         render();
         return;
-      } else if (y >= 160 && y < 184) {
+      } else if (y >= 156 && y < 172) {
         if (resetArmed) resetGame();
         else {
           resetArmed = true;
           resetArmedAt = millis();
         }
-      } else if (y >= 188 && y < 206) {
+      } else if (y >= 180 && y < 206) {
         page = OTA_PAGE;                 // WiFi login + OTA updates screen
         render();
         return;
@@ -5189,11 +5733,18 @@ void handleTouch(int x, int y) {
       handleGrowerNameTouch(x, y);
       break;
     case SEED_SHOP:
-      // Big-card grid: rows of 27px, two columns; the whole card buys.
-      if (y >= 70 && y < 203 && x >= 5) {
-        uint8_t row = (uint8_t)((y - 70) / 27);
-        uint8_t col = x >= 160 ? 1 : 0;
-        if (row < 5) buySeeds(strainCatalogOrder[row * 2 + col]);
+      // Picker: arrows cycle ALL strains (locked ones gray out); BUY only
+      // works on cards you have unlocked.
+      if (y >= 96 && y < 148 && x < 54) {
+        seedShopCursor = seedShopCursor ? seedShopCursor - 1 : STRAIN_COUNT - 1;
+        render();
+        return;
+      } else if (y >= 96 && y < 148 && x >= 266) {
+        seedShopCursor = seedShopCursor >= STRAIN_COUNT - 1 ? 0 : seedShopCursor + 1;
+        render();
+        return;
+      } else if (y >= 184 && y < 206 && seedShopCursor <= strainUnlockedThrough) {
+        buySeeds(strainCatalogOrder[seedShopCursor]);
       }
       break;
     case PLANT_VIEW:
@@ -5209,9 +5760,7 @@ void handleTouch(int x, int y) {
   if (plantDeathAnimationRequested) animatePlantDeath();
   if (waterAnimationRequested) {
     waterAnimationRequested = false;
-    animateWatering();
-    // The watering animation ends on a fully drawn, up-to-date garden scene;
-    // skip the follow-up renders so nothing else gets redrawn on top.
+    startWateringAnimation();   // frames step in the loop; touch stays live
     return;
   }
   if (smokeAnimationRequested) {
@@ -5502,7 +6051,23 @@ void gameTick() {
       }
       if (pestType > 0) {
         pestSeverity = min(100, pestSeverity + 7);
-        if (pestSeverity >= 35 && vigor > 3) vigor -= 3;
+        // Infestations stress the plant: vigor and hydration both drain
+        // faster the worse it gets, until the pest is treated.
+        if (pestSeverity >= 35 && vigor > 3)
+          vigor -= min(3, 1 + pestSeverity / 34);   // ramps 2 -> 3 per tick
+        uint8_t pestThirst = pestSeverity / 25;     // up to +4 water/tick
+        if (pestThirst) hydration = hydration > pestThirst ? hydration - pestThirst : 0;
+      }
+
+      // Dying-plant modal: fires once per crisis on any page; re-arms when
+      // the plant recovers or the dismissal cooldown lapses.
+      bool plantCrisis = hydration < 20 || pestSeverity >= 80;
+      if (plantCrisis && !deathWarnModal &&
+          (int32_t)(millis() - deathWarnNextAllowed) >= 0) {
+        deathWarnModal = true;
+        render();                        // stamp the popup over this page
+      } else if (!plantCrisis && !deathWarnModal) {
+        deathWarnNextAllowed = 0;        // healthy again: re-arm
       }
     }
 
@@ -5641,13 +6206,12 @@ void updateHarvestLed() {
   bool dying = plantDeathAnimationRequested || (long)(deathLedUntil - millis()) > 0;
   bool pest = plantActive && growth < 100 && pestType > 0;
   if (!ready && !dying && !pest) {
-    if (stonedLevel > 0 || growthBoostTicks > 0) {
-      // Smoke-break rainbow: hue drifts through the full spectrum (~2s loop).
-      // It stays up while the smoke-break effects are running — the high
-      // (stoned meter) or Garden Glow (the growth boost), whichever lasts
-      // longer. Both decay one point per game tick, so the rainbow winds
-      // down with the effects and then goes dark on its own.
-      harvestPixel.setPixelColor(0, harvestPixel.ColorHSV((uint16_t)(millis() * 32), 255, 150));
+    if (millis() < rainbowUntil) {
+      // Smoke-break rainbow flourish: ~5s of full-spectrum drift after a
+      // smoke break, then a ~1.5s fade before the LED goes dark.
+      unsigned long left = rainbowUntil - millis();
+      uint8_t v = left < 1500 ? (uint8_t)(left * 150 / 1500) : 150;
+      harvestPixel.setPixelColor(0, harvestPixel.ColorHSV((uint16_t)(millis() * 32), 255, v));
       harvestPixel.show();
       lit = true;
       return;
@@ -5745,6 +6309,7 @@ void enterDeepSleep() {
   activeSong = nullptr;
   drumPlaying = false;
   otaRestoreRadio();                 // close any WiFi session before sleep
+  harvestLedOff();                   // LED rainbow pauses through sleep
   if (nearbyReady) {
     esp_now_deinit();
     nearbyReady = false;
@@ -5765,6 +6330,27 @@ void enterDeepSleep() {
   esp_deep_sleep_start();  // does not return; wake = full reboot
 }
 
+// Charge light for the charging-idle loop: pulsing red while charging,
+// solid green when the pack is full, dark with no battery present.
+void chargeLedSleepTick() {
+  if (Serial.isConnected()) {
+    float v = analogReadMilliVolts(9) / 1000.0f * BATT_DIV;
+    if (v > 2.5f) {
+      if (v >= 4.15f) {
+        harvestLedOn();
+      } else {
+        uint32_t t = millis() % 4000;
+        uint8_t duty = t < 2000 ? (uint8_t)(t * 255 / 2000)
+                               : (uint8_t)((4000 - t) * 255 / 2000);
+        harvestPixel.setPixelColor(0, harvestPixel.Color(duty, 0, 0));
+        harvestPixel.show();
+      }
+      return;
+    }
+  }
+  harvestLedOff();
+}
+
 void sleepUntilBootWake() {
   saveGame();
   chipToneOff();      // silence both voices through light sleep
@@ -5773,6 +6359,7 @@ void sleepUntilBootWake() {
   activeSong = nullptr;
   drumPlaying = false;
   otaRestoreRadio();                 // close any WiFi session before sleep
+  harvestLedOff();                   // LED rainbow pauses through sleep
   if (nearbyReady) {
     esp_now_deinit();
     nearbyReady = false;
@@ -5789,9 +6376,26 @@ void sleepUntilBootWake() {
 
   // Release the button before arming low-level wake, or GPIO0 would wake at once.
   while (digitalRead(BOOT_BUTTON_PIN) == LOW) delay(10);
-  esp_err_t wakeReady = esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
-  if (wakeReady == ESP_OK) esp_light_sleep_start();
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT0);
+
+  // The charger chip charges in any mode (it is hardware), but the charge
+  // light needs the CPU. On USB power: stay awake with the screen off and
+  // run the charge light; on battery: true light sleep, with a 10 s timer
+  // wake that notices a USB plug-in and starts the charge light.
+  for (;;) {
+    while (Serial.isConnected() && analogReadMilliVolts(9) / 1000.0f * BATT_DIV > 2.5f &&
+           digitalRead(BOOT_BUTTON_PIN) == HIGH) {
+      chargeLedSleepTick();
+      delay(20);
+    }
+    if (digitalRead(BOOT_BUTTON_PIN) == LOW) break;   // BOOT = wake up for real
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+    esp_sleep_enable_timer_wakeup(10000000ULL);       // re-check USB every 10 s
+    esp_light_sleep_start();
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT0);
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) break;  // BOOT
+    // Timer wake: charge if USB appeared, otherwise sleep again.
+  }
   justWokeFromSleep = true;  // loop runs the missed ticks dormant (no drying)
   while (digitalRead(BOOT_BUTTON_PIN) == LOW) delay(10);
 
@@ -5983,7 +6587,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: per-strain seeds + OTA updates + cheats + remediation\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: farmer pop-out colour fix\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
@@ -6192,6 +6796,7 @@ void loop() {
         nearbyMode = 3;
         render();
       }
+      refreshNearbyPopup();  // keep overlays stamped on the consume path
       return;  // consume the tap either way so the page under doesn't react
     }
   }
@@ -6206,6 +6811,13 @@ void loop() {
 
   serviceNearby();
   updateHarvestLed();
+  // Async WiFi scan for the login screen: pick up the results when ready.
+  if (wifiScanPending && page == WIFI_LOGIN && wifiLoginStage == 0 &&
+      WiFi.scanComplete() >= 0) {
+    wifiScanPending = false;
+    wifiScanFill();
+    render();
+  }
   updateMusic();  // advance the chiptune sequencer
 
   // Grow clock ticks by WALL time (the RTC keeps counting through sleep), so
@@ -6254,10 +6866,13 @@ void loop() {
     render();
   }
 
+  if (waterAnimActive) stepWateringAnimation();
+
   if ((page == GARDEN || page == PLANT_VIEW) && plantActive && growth < 100 &&
+      !waterAnimActive && !deathWarnModal &&
       now - lastFarmerVisitAt >= 10000UL) {
     lastFarmerVisitAt = now;
-    animateFarmerVisit();
+    startFarmerOverlay();   // non-blocking: re-stamps only after repaints
     now = millis();
   }
 
@@ -6273,6 +6888,15 @@ void loop() {
     readTouch(x, y);
     if (!previousTouch) {
       previousTouch = true;
+      if (deathWarnModal) {
+        deathWarnModal = false;
+        deathWarnNextAllowed = millis() + 90000UL;
+        if (plantActive) page = GARDEN;
+        render();
+        refreshNearbyPopup();
+        delay(8);
+        return;
+      }
       // Strain picker arrows (batch must still be untouched).
       if (plantedPotCount() == 0 && countSeededStrains() > 1 && y >= 56 && y < 78) {
         if (x < 54) plantStrain = nextSeededStrain(plantStrain, -1);
