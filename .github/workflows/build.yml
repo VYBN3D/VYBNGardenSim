@@ -50,15 +50,15 @@ jobs:
       - name: Compile ${{ matrix.sketch }}
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          mkdir -p firmware/workdir firmware/build/${{ matrix.sketch }}
-          cp firmware/${{ matrix.sketch }}.ino firmware/workdir/
+          mkdir -p firmware/work/${{ matrix.sketch }} firmware/build/${{ matrix.sketch }}
+          cp firmware/${{ matrix.sketch }}.ino firmware/work/${{ matrix.sketch }}/
           if [ -f firmware/build_opt_${{ matrix.sketch }}.h ]; then
-            cp firmware/build_opt_${{ matrix.sketch }}.h firmware/workdir/build_opt.h
+            cp firmware/build_opt_${{ matrix.sketch }}.h firmware/work/${{ matrix.sketch }}/build_opt.h
           fi
           arduino-cli compile \
             --fqbn "${{ matrix.fqbn }}" \
             --build-path firmware/build/${{ matrix.sketch }} \
-            firmware/workdir
+            firmware/work/${{ matrix.sketch }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
