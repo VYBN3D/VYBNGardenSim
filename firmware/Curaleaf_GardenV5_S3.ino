@@ -402,6 +402,7 @@ uint8_t defoliateButtonState();
 void resetDefoliationForNewPlant();
 void animatePlantDeath();
 void showDefoliatePrompt();
+uint8_t currentDefoliateWindow();
 void animatePestInvasion();
 void drawNearbyKeyboardRow(const char *keys, int count, int startX, int y);
 void drawGardenActions();
@@ -409,7 +410,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v20"
+#define FW_VERSION "v21"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -3357,6 +3358,30 @@ static void applyCheatCode() {
     hydration = 100;
     dryStreakTicks = 0;
     strlcpy(cheatFeedback, "soil soaked to 100%", sizeof(cheatFeedback));
+  } else if (!strcmp(code, "PEST")) {
+    pestType = 0;
+    pestSeverity = 0;
+    strlcpy(cheatFeedback, "garden pest-free", sizeof(cheatFeedback));
+  } else if (!strcmp(code, "CARE")) {
+    waterPacks = min(99, waterPacks + 5);
+    careKits = min(255, (int)careKits + 5);
+    pestDefenseKits = min(255, (int)pestDefenseKits + 5);
+    strlcpy(cheatFeedback, "supplies restocked", sizeof(cheatFeedback));
+  } else if (!strcmp(code, "SKIP")) {
+    if (!plantActive) {
+      strlcpy(cheatFeedback, "no plant in the garden", sizeof(cheatFeedback));
+      return;
+    }
+    if (defoliateWindow != 255 && defoliateWindow == currentDefoliateWindow() &&
+        defoliateClicks == 0) {
+      // Satisfies the open window without the kill risk, so growth resumes.
+      defoliateClicks = 1;
+      defoliatePromptPending = 255;
+      strlcpy(cheatFeedback, "defoliation skipped", sizeof(cheatFeedback));
+    } else {
+      strlcpy(cheatFeedback, "no open defoliation", sizeof(cheatFeedback));
+      return;
+    }
   } else {
     strlcpy(cheatFeedback, "unknown code", sizeof(cheatFeedback));
     return;
@@ -6588,7 +6613,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: big wifi scan rows\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: PEST + CARE + SKIP cheats\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
