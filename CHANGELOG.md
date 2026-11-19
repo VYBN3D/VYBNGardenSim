@@ -5,6 +5,11 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v27 — smooth sell-picker arrows
+- Tapping the giant < > arrows in the sell submenu now repaints only the
+  strain card and the SELL bar (a full-page render used to flash the
+  whole screen on every arrow tap)
+
 ## v26 — sell picker uses big strain cards
 - The market strain submenu is rebuilt: BACK is now a proper button in the
   top-right of the box; each stashed strain is one giant card flanked by

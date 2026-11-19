@@ -410,7 +410,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v26"
+#define FW_VERSION "v27"
 #define FW_BOARD    "S28"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -4340,6 +4340,20 @@ static void openMarketSell(uint8_t mode) {
   render();
 }
 
+// Builds the big SELL bar label for the selected strain.
+static void marketSellPriceText(char *out, size_t len) {
+  if (marketSellMode == 1)
+    snprintf(out, len, "SELL 1 JAR - $%u", flowerUnitPrice(marketSellStrain));
+  else if (marketSellMode == 2)
+    snprintf(out, len, "SELL ALL x%u - $%u", stashByStrain[marketSellStrain],
+             (uint32_t)stashByStrain[marketSellStrain] * flowerUnitPrice(marketSellStrain));
+  else if (marketSellMode == 3)
+    snprintf(out, len, "SELL 1 HASH - $%u", hashUnitPrice(marketSellStrain));
+  else
+    snprintf(out, len, "SELL ALL x%u - $%u", hashByStrain[marketSellStrain],
+             (uint32_t)hashByStrain[marketSellStrain] * hashUnitPrice(marketSellStrain));
+}
+
 static void drawSellStrainModal() {
   bool flower = marketSellMode <= 2;
   game.fillRoundRect(5, 72, 310, 133, 8, PANEL);
@@ -4395,17 +4409,33 @@ static void drawSellStrainModal() {
   game.drawCentreString(info, 155, 134, 1);
   // Full-width SELL bar under the card.
   char price[40];
-  if (marketSellMode == 1)
-    snprintf(price, sizeof(price), "SELL 1 JAR - $%u", flowerUnitPrice(marketSellStrain));
-  else if (marketSellMode == 2)
-    snprintf(price, sizeof(price), "SELL ALL x%u - $%u", stashByStrain[marketSellStrain],
-             (uint32_t)stashByStrain[marketSellStrain] * flowerUnitPrice(marketSellStrain));
-  else if (marketSellMode == 3)
-    snprintf(price, sizeof(price), "SELL 1 HASH - $%u", hashUnitPrice(marketSellStrain));
-  else
-    snprintf(price, sizeof(price), "SELL ALL x%u - $%u", hashByStrain[marketSellStrain],
-             (uint32_t)hashByStrain[marketSellStrain] * hashUnitPrice(marketSellStrain));
+  marketSellPriceText(price, sizeof(price));
   drawButton(5, 172, 310, 26, price, ACCENT_DARK, TFT_WHITE);
+}
+
+// Arrow feedback without a full-page render: repaint only the strain card
+// and the SELL bar so tapping < > doesn't flash the whole screen.
+static void redrawSellStrainCard() {
+  uint8_t s = marketSellStrain;
+  bool flower = marketSellMode <= 2;
+  game.fillRoundRect(57, 100, 196, 64, 8, PANEL);
+  game.drawRoundRect(57, 100, 196, 64, 8, ACCENT);
+  int nameFont = strlen(strainNames[s]) > 14 ? 1 : 2;
+  game.setTextColor(TEXT_MAIN, PANEL);
+  game.drawCentreString(strainNames[s], 155, nameFont == 2 ? 108 : 112, nameFont);
+  game.setTextColor(GOLD, PANEL);
+  char info[40];
+  if (flower)
+    snprintf(info, sizeof(info), "x%u jars - $%u each", stashByStrain[s], flowerUnitPrice(s));
+  else
+    snprintf(info, sizeof(info), "x%u hash - $%u each", hashByStrain[s], hashUnitPrice(s));
+  game.drawCentreString(info, 155, 134, 1);
+  char price[40];
+  marketSellPriceText(price, sizeof(price));
+  game.fillRoundRect(5, 172, 310, 26, 6, ACCENT_DARK);
+  game.drawRoundRect(5, 172, 310, 26, 6, PANEL_LIGHT);
+  game.setTextColor(TFT_WHITE, ACCENT_DARK);
+  game.drawCentreString(price, 160, 177, 1);
 }
 
 
@@ -4437,11 +4467,11 @@ static void touchMarketSellModal(int x, int y) {
     if (x < 57) {   // giant < arrow: previous stashed strain
       marketSellStrain = marketSellMode <= 2 ? nextStashStrain(marketSellStrain, -1)
                                              : nextHashStrain(marketSellStrain, -1);
-      render();
+      redrawSellStrainCard();
     } else if (x >= 253) {   // giant > arrow: next stashed strain
       marketSellStrain = marketSellMode <= 2 ? nextStashStrain(marketSellStrain, 1)
                                              : nextHashStrain(marketSellStrain, 1);
-      render();
+      redrawSellStrainCard();
     }
   } else if (y >= 172 && y < 198) {
     marketSellConfirm = true;              // arm the ARE YOU SURE? panel
@@ -6815,7 +6845,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: sell picker big cards\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: smooth sell arrows\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
