@@ -413,7 +413,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v33"
+#define FW_VERSION "v34"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -428,6 +428,7 @@ void drawSettingsRow(int y, const char *label, const char *value);
 uint8_t musicVolume = 40;  // 0..100% of max loudness; 0 = music off
 uint8_t musicVolumeBeforeMute = 40;  // volume restored when the mute toggle is tapped
 bool deathWarnModal = false;            // centered dying-plant popup, any page
+bool deathWarnStamped = false;          // modal pixels currently in the buffer
 unsigned long deathWarnNextAllowed = 0; // re-popup cooldown after dismissal
 
 struct ChipNote { uint16_t freq; uint8_t steps; };  // freq 0 = rest; steps in 16ths
@@ -1522,6 +1523,13 @@ void drawFarmerInspector(int pose);
 void drawFarmerSpeechBubble(const FarmerSaying &saying);
 
 void refreshNearbyPopup() {
+  // The dying-plant modal rides inside the buffer. If it left without a tap
+  // (the plant recovered or died on its own), redraw the page under it so no
+  // bar of the popup stays behind the plant art.
+  if (deathWarnStamped && !deathWarnModal) {
+    deathWarnStamped = false;
+    render();                     // clean repaint; presentFrame included
+  }
   if (farmerOverlayActive) {
     if ((long)(millis() - farmerOverlayUntil) >= 0 && !waterAnimActive) {
       farmerOverlayActive = false;
@@ -1539,7 +1547,10 @@ void refreshNearbyPopup() {
   if (nearbyPopupActive) drawNearbyPopup();
   // The dying-plant modal is stamped LAST so it sits on top of everything:
   // stats, animations, the farmer overlay and the nearby popup alike.
-  if (deathWarnModal) drawDeathWarnPopup();
+  if (deathWarnModal) {
+    drawDeathWarnPopup();
+    deathWarnStamped = true;
+  }
 }
 
 void applyNearbyGift(uint8_t item, uint8_t strain) {
@@ -2897,7 +2908,7 @@ void drawStashPage() {
   const char *labels[] = {"Untrimmed flowers", "Trimmed flowers", "Hash units", "Active plants"};
   uint16_t values[] = {untrimmedUnits, stashTotal(), hashTotal(), plantActive ? PLANTS_PER_ROOM : 0};
   for (int i = 0; i < 4; ++i) {
-    int y = 72 + i * 12;
+    int y = 64 + i * 11;
     game.setTextColor(TEXT_DIM, BG);
     game.drawString(labels[i], 18, y, 1);
     char value[12];
@@ -2908,13 +2919,20 @@ void drawStashPage() {
   }
   // Jars and hash by strain: flower jars + hash units share each row.
   game.setTextColor(TEXT_DIM, BG);
-  game.drawString("STASH BY STRAIN - JARS / HASH", 18, 124, 1);
+  game.drawString("STASH BY STRAIN - JARS / HASH", 18, 112, 1);
+  uint8_t stocked = 0;
+  for (uint8_t i = 0; i < STRAIN_COUNT; ++i)
+    if (stashByStrain[i] || hashByStrain[i]) ++stocked;
+  if (stocked > 4) {
+    char more[16];
+    snprintf(more, sizeof(more), "+%u more", stocked - 4);
+    game.drawRightString(more, 302, 112, 1);
+  }
   int shown = 0;
-  int extra = 0;
   for (uint8_t i = 0; i < STRAIN_COUNT; ++i) {
     if (!stashByStrain[i] && !hashByStrain[i]) continue;
-    if (shown >= 4) { ++extra; continue; }
-    int y = 136 + shown * 12;
+    if (shown >= 4) continue;
+    int y = 124 + shown * 12;
     game.setTextColor(TEXT_MAIN, BG);
     game.drawString(strainNames[i], 18, y, 1);
     char row[44];
@@ -2935,33 +2953,27 @@ void drawStashPage() {
   }
   if (shown == 0) {
     game.setTextColor(TEXT_DIM, BG);
-    game.drawCentreString("Nothing stashed - trim flowers or press hash", 160, 146, 1);
-  } else if (extra) {
-    game.setTextColor(TEXT_DIM, BG);
-    char more[24];
-    snprintf(more, sizeof(more), "+%u more strain%s", extra, extra == 1 ? "" : "s");
-    game.drawRightString(more, 302, 184, 1);
+    game.drawCentreString("Nothing stashed - trim flowers or press hash", 160, 136, 1);
   }
   if (untrimmedUnits > 0) {
-    drawButton(5, 184, 152, 20, "TRIM FLOWERS", ACCENT_DARK);
+    drawButton(5, 174, 152, 28, "TRIM FLOWERS", ACCENT_DARK);
   } else {
-    drawButton(5, 184, 152, 20, "TRIM FLOWERS", PANEL_LIGHT, TEXT_DIM);
+    drawButton(5, 174, 152, 28, "TRIM FLOWERS", PANEL_LIGHT, TEXT_DIM);
   }
-  drawButton(163, 184, 152, 20, "SMOKE BREAK", ACCENT_DARK);
+  drawButton(163, 174, 152, 28, "SMOKE BREAK", ACCENT_DARK);
   if (smokeMenuOpen) drawSmokeBreakMenu();   // chooser covers the jar list
 }
 void drawSmokeBreakMenu() {
-  game.fillRoundRect(5, 72, 310, 133, 8, PANEL);
-  game.drawRoundRect(5, 72, 310, 133, 8, PANEL_LIGHT);
-  drawButton(243, 74, 66, 20, "BACK", PANEL_LIGHT);
+  game.fillRoundRect(5, 56, 310, 149, 8, PANEL);
+  game.drawRoundRect(5, 56, 310, 149, 8, PANEL_LIGHT);
   game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawCentreString("SMOKE BREAK", 124, 77, 2);
+  game.drawCentreString("SMOKE BREAK", 160, 61, 2);
   const char *rows[3] = {"BONG + FLOWER + LIGHTER", "BONG + HASH", "PAPERS + FLOWER + LIGHTER"};
   bool ready[3] = {(bool)(bongs && stashTotal()),
                    (bool)(bongs && hashRoomUnlocked && hashTotal()),
                    (bool)(stashTotal() && lighters && rollingPapers)};
   if (smokeMenuConfirm) {
-    game.drawCentreString("ARE YOU SURE?", 160, 100, 2);
+    game.drawCentreString("ARE YOU SURE?", 160, 88, 2);
     char detail[44];
     if (smokeMenuPick == 1)
       snprintf(detail, sizeof(detail), "Bong bowl of flower + 1 lighter");
@@ -2969,18 +2981,19 @@ void drawSmokeBreakMenu() {
       snprintf(detail, sizeof(detail), "Bong bowl of hash");
     else
       snprintf(detail, sizeof(detail), "Rolled joint + lighter");
-    game.drawCentreString(detail, 160, 126, 1);
-    drawButton(5, 162, 150, 26, "BACK", PANEL_LIGHT);
-    drawButton(163, 162, 152, 26, "YES, SMOKE IT", RED, TFT_WHITE);
+    game.drawCentreString(detail, 160, 116, 1);
+    drawButton(5, 176, 150, 27, "BACK", PANEL_LIGHT);
+    drawButton(163, 176, 152, 27, "YES, SMOKE IT", RED, TFT_WHITE);
     return;
   }
   for (uint8_t r = 0; r < 3; ++r) {
-    int y = 88 + r * 28;
-    game.fillRoundRect(11, y, 298, 26, 5, PANEL);
-    game.drawRoundRect(11, y, 298, 26, 5, ready[r] ? ACCENT : PANEL_LIGHT);
+    int y = 78 + r * 32;
+    game.fillRoundRect(11, y, 298, 28, 5, PANEL);
+    game.drawRoundRect(11, y, 298, 28, 5, ready[r] ? ACCENT : PANEL_LIGHT);
     game.setTextColor(ready[r] ? TEXT_MAIN : TEXT_DIM, PANEL);
-    game.drawCentreString(rows[r], 160, y + 5, 1);
+    game.drawCentreString(rows[r], 160, y + 8, 1);
   }
+  drawButton(5, 176, 310, 27, "BACK", PANEL_LIGHT);   // full-width row
 }
 
 void drawOptionsRow(int y, const char *label, const char *value) {
@@ -4066,7 +4079,10 @@ void presentWithOverlays() {
     drawFarmerSpeechBubble(farmerOverlaySaying);
   }
   if (nearbyPopupActive && page != NEARBY) drawNearbyPopup();
-  if (deathWarnModal) drawDeathWarnPopup();
+  if (deathWarnModal) {
+    drawDeathWarnPopup();
+    deathWarnStamped = true;
+  }
   presentFrame();
 }
 
@@ -6027,7 +6043,7 @@ void handleTouch(int x, int y) {
     case STASH:
       if (smokeMenuOpen) {
         if (smokeMenuConfirm) {
-          if (y >= 162 && y < 188) {
+          if (y >= 176 && y < 203) {
             if (x < 160) {
               smokeMenuConfirm = false;          // BACK - nothing smoked
             } else {
@@ -6040,10 +6056,10 @@ void handleTouch(int x, int y) {
           } else {
             smokeMenuConfirm = false;            // tap anywhere else cancels
           }
-        } else if (y >= 74 && y < 94 && x >= 243) {
-          smokeMenuOpen = false;                 // BACK, top-right of the box
-        } else if (y >= 88 && y < 170) {
-          uint8_t r = (y - 88) / 28;
+        } else if (y >= 176 && y < 203) {
+          smokeMenuOpen = false;                 // BACK, full-width row
+        } else if (y >= 78 && y < 172) {
+          uint8_t r = (y - 78) / 32;
           bool ready[3] = {(bool)(bongs && stashTotal()),
                            (bool)(bongs && hashRoomUnlocked && hashTotal()),
                            (bool)(stashTotal() && lighters && rollingPapers)};
@@ -6054,7 +6070,7 @@ void handleTouch(int x, int y) {
         }
         break;
       }
-      if (y >= 184 && y < 204) {
+      if (y >= 174 && y < 203) {
         if (x < 160) {
           if (untrimmedUnits > 0) page = TRIM_ROOM;
         } else {
@@ -6997,7 +7013,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: sleep LED off + clean page wipes\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: death alert cleanup\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
