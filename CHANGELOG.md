@@ -1,9 +1,19 @@
 # Curaleaf Garden — Changelog
 
-Firmware versions for the 4" S3 and 2.8" S3 grow-game boards.
+Firmware versions for the 4" S3 and 2.8" S3 WinFlorida Garden Sim boards.
 Each tagged version publishes `.bin` files + `version.txt` on the
-[Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
+[Releases page](https://github.com/VYBN3D/WinFloridaGardenSim/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
+
+## v39 — WinFlorida rebrand
+- The game is rebranded: **WinFlorida Garden Sim** (formerly Curaleaf Garden)
+  — boot splash, header bar, grower ID card brand and all comments updated
+- OTA release base now points at the renamed repo
+  `VYBN3D/WinFloridaGardenSim`; the OTA asset name follows the renamed
+  sketch files (`WinFloridaGardenSim_S3.ino.bin` etc.)
+- The leaf logo stays (renamed in code); boards on v38 or older still OTA
+  fine — the v39 release also carries the old-named `.bin` copies so every
+  device can update to the new name
 
 ## v38 — Boot chant, sampled theme loop, hash wash room, bigger sell modal
 - **Boot chant**: a crowd-chant sample (uploaded MP3, decoded on the Mac to

@@ -20,11 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - sketch: Curaleaf_GardenV5_S3
+          - sketch: WinFloridaGardenSim_S3
             fqbn: "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
-          - sketch: Curaleaf_GardenV5_S28
+          - sketch: WinFloridaGardenSim_S28
             fqbn: "esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB"
-          - sketch: Curaleaf_GardenV5
+          - sketch: WinFloridaGardenSim
             fqbn: "esp32:esp32:esp32:PartitionScheme=default"
             classic: true
     steps:

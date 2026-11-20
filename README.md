@@ -1,4 +1,4 @@
-# 🌿 Curaleaf Garden
+# 🌿 WinFlorida Garden Sim
 
 **A cannabis grow-sim that runs entirely on a $15 CYD display board.**
 Plant seeds, keep your rooms watered and defoliated, fight mites and aphids,
@@ -7,7 +7,7 @@ out at the market — with your own grower, your own stash art, and a
 soundtrack baked into the firmware.
 
 Three boards. One firmware family. Everything below is live in the latest
-[**Releases**](https://github.com/VYBN3D/curaleaf-garden/releases).
+[**Releases**](https://github.com/VYBN3D/WinFloridaGardenSim/releases).
 
 ---
 
@@ -42,7 +42,7 @@ Three boards. One firmware family. Everything below is live in the latest
 
 ## About the game
 
-Curaleaf Garden is a full grow-house economy squeezed onto a small TFT
+WinFlorida Garden Sim is a full grow-house economy squeezed onto a small TFT
 touchscreen. You pick a grower, build a catalog of 16 strains one unlock at a
 time, and run rooms of 4 plants from seed to sale.
 
@@ -66,9 +66,9 @@ mature room. Deep sleep between sessions costs almost nothing.
 
 | Board | Panel | Touch | Sketch | Notes |
 |---|---|---|---|---|
-| **CYD classic** | 2.8" ILI9341, 320×240 | Resistive (XPT2046) | `Curaleaf_GardenV5.ino` | Single SPI bus, SD + touch share |
-| **S3 2.8"** | 2.8" ST7789-class, 320×240 | Capacitive | `Curaleaf_GardenV5_S28.ino` | ESP32-S3, separate SD bus |
-| **S3 4"** | 4" ST7796, 480×320 | Capacitive (FT6336U) | `Curaleaf_GardenV5_S3.ino` | ESP32-S3, SDIO SD, PSRAM frame buffer |
+| **CYD classic** | 2.8" ILI9341, 320×240 | Resistive (XPT2046) | `WinFloridaGardenSim.ino` | Single SPI bus, SD + touch share |
+| **S3 2.8"** | 2.8" ST7789-class, 320×240 | Capacitive | `WinFloridaGardenSim_S28.ino` | ESP32-S3, separate SD bus |
+| **S3 4"** | 4" ST7796, 480×320 | Capacitive (FT6336U) | `WinFloridaGardenSim_S3.ino` | ESP32-S3, SDIO SD, PSRAM frame buffer |
 
 All three share the same game logic; the S3 builds add the PSRAM render
 buffer (flicker-free pages), the ES8311 audio path, and the charge LED.
@@ -91,11 +91,11 @@ files the boards fetch.
 ```bash
 arduino-cli compile \
   --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB \
-  --build-path build Curaleaf_GardenV5_S3/
+  --build-path build WinFloridaGardenSim_S3/
 
 arduino-cli upload \
   --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB \
-  --input-dir build --port /dev/cu.usbmodem11201 Curaleaf_GardenV5_S3/
+  --input-dir build --port /dev/cu.usbmodem11201 WinFloridaGardenSim_S3/
 ```
 
 The classic CYD uses the default ESP32 FQBN with `User_Setup_classic.h`.
@@ -200,7 +200,7 @@ Gear lane:
 
 ### Nearby growers
 
-The NEARBY tab uses ESP-NOW radio to find other Curaleaf boards around you.
+The NEARBY tab uses ESP-NOW radio to find other WinFlorida boards around you.
 Say hello, browse who's out there, and **send supplies** — seeds, flower jars
 or hash units travel over the air with a confirm-first flow.
 
@@ -311,6 +311,7 @@ devices OTA against.
 
 ## Firmware versions
 
+- **v39** — WinFlorida rebrand
 - **v38** — boot chant, sampled theme loop, hash room wash picker, bigger strain modal
 - **v37** — no-SD garden art rebuilt to match the PLANT BMPs
 - **v36** — code-only intro (no stale SD caption art)

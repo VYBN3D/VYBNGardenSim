@@ -112,8 +112,8 @@ const uint16_t ACCENT_DARK = 0x3D66;
 const uint16_t GOLD = 0xFEA0;
 const uint16_t RED = 0xE986;
 
-// Small 24x24 alpha-cut mask made from the user's Curaleaf logo PNG.
-const uint8_t curaleafLogoMask[72] PROGMEM = {
+// Small 24x24 alpha-cut mask of the WinFlorida leaf logo.
+const uint8_t winLeafLogoMask[72] PROGMEM = {
   0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7F,0x80,0x01,0xFF,0xE0,
   0x07,0x80,0x78,0x0E,0x00,0x1C,0x1C,0x00,0x0C,0x18,0x00,0xC0,
   0x38,0x1F,0xC0,0x30,0x78,0x80,0x30,0xC1,0x80,0x31,0x81,0x80,
@@ -214,7 +214,7 @@ uint8_t dryStreakTicks = 0;         // consecutive ticks the plant has been <20%
 bool plantDeathAnimationRequested = false;
 bool pestAnimationRequested = false;
 
-const char DEVICE_BRAND[] = "Curaleaf";
+const char DEVICE_BRAND[] = "WinFlorida";
 const uint16_t NEARBY_MAGIC = 0xC47A;
 const uint8_t PACKET_HELLO = 1;
 const uint8_t PACKET_MESSAGE = 2;
@@ -535,11 +535,11 @@ uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-void drawCuraleafLogo(int x, int y, int scale, uint16_t color) {
+void drawLeafLogo(int x, int y, int scale, uint16_t color) {
   for (int row = 0; row < 24; ++row) {
     for (int col = 0; col < 24; ++col) {
       int bitIndex = row * 24 + col;
-      uint8_t packed = pgm_read_byte(&curaleafLogoMask[bitIndex >> 3]);
+      uint8_t packed = pgm_read_byte(&winLeafLogoMask[bitIndex >> 3]);
       if (packed & (0x80 >> (bitIndex & 7))) {
         if (scale == 1) canvas.drawPixel(x + col, y + row, color);
         else canvas.fillRect(x + col * scale, y + row * scale, scale, scale, color);
@@ -1561,9 +1561,9 @@ void drawGearIcon(int cx, int cy) {
 void drawHeader() {
   canvas.fillRect(0, 0, SCREEN_W, HEADER_H, 0x0861);
   canvas.drawFastHLine(0, HEADER_H - 1, SCREEN_W, 0x4D89);
-  drawCuraleafLogo(7, 2, 1, TFT_WHITE);
+  drawLeafLogo(7, 2, 1, TFT_WHITE);
   canvas.setTextColor(TEXT_MAIN, 0x0861);
-  canvas.drawString("CURALEAF", 35, 4, 2);
+  canvas.drawString("WINFLORIDA", 35, 4, 2);
   canvas.setTextColor(TEXT_DIM, 0x0861);
   canvas.drawString(growerName, 36, 18, 1);
 
@@ -2450,8 +2450,8 @@ void drawGrowerIdCard() {
 #include <Update.h>
 
 static const char *OTA_RELEASE_BASE =
-    "https://github.com/VYBN3D/curaleaf-garden/releases/latest/download/";
-static const char *OTA_BIN_NAME = "Curaleaf_GardenV5.ino.bin";
+    "https://github.com/VYBN3D/WinFloridaGardenSim/releases/latest/download/";
+static const char *OTA_BIN_NAME = "WinFloridaGardenSim.ino.bin";
 
 static bool wifiConnected() { return WiFi.status() == WL_CONNECTED; }
 
@@ -2786,7 +2786,7 @@ void drawOptionsPage() {
   drawButton(5, 188, 310, 18, "UPDATE - WIFI / OTA", PANEL_LIGHT);
 }
 
-// Grower menu, opened from the Curaleaf leaf: your grower as an ID card.
+// Grower menu, opened from the leaf: your grower as an ID card.
 void drawGrowerMenuPage() {
   drawGrowerIdCard();
   // Full-width, big-font nav rows — the whole row is the tap target.
@@ -3584,7 +3584,7 @@ void drawWateringFrame(int frame) {
   canvas.drawLine(x - 5, 126, x - 11, 124, skin);
   canvas.drawLine(x + 33, 135, x + 37, 136, shirt);
   canvas.drawLine(x + 37, 136, x + 40, 137, skin);
-  drawCuraleafLogo(x + 8, 125, 1, TFT_WHITE);
+  drawLeafLogo(x + 8, 125, 1, TFT_WHITE);
   drawFarmerHeadLarge(x + 20, 112, farmerCharacter);
 
   int canX = x - 20;
@@ -3641,7 +3641,7 @@ void drawFarmerInspector(int pose) {
   canvas.fillRoundRect(cx - torsoW / 2, footY - 18 - torsoH, torsoW, torsoH, 6, shirt);
   canvas.fillRoundRect(cx - torsoW / 2 - 5, footY - 18 - torsoH + 5, 8, torsoH - 8, 3, shirt);
   canvas.fillRoundRect(cx + torsoW / 2 - 3, footY - 18 - torsoH + 5, 8, torsoH - 8, 3, shirt);
-  drawCuraleafLogo(cx - 12, footY - 18 - torsoH + 3, 1, TFT_WHITE);
+  drawLeafLogo(cx - 12, footY - 18 - torsoH + 3, 1, TFT_WHITE);
   canvas.drawLine(cx - torsoW / 2 - 2, footY - 31, cx - torsoW / 2 + 1, footY - 24, skin);
   canvas.drawLine(cx + torsoW / 2 + 2, footY - 31, cx + torsoW / 2 - 1, footY - 24, skin);
   drawFarmerHeadLarge(cx, footY - 59, farmerCharacter);
@@ -3750,7 +3750,7 @@ void drawSmokeCutsceneFrame(int frame) {
   canvas.fillRoundRect(cx - 23, footY - 62, 46, 42, 8, shirt);
   canvas.fillRoundRect(cx - 29, footY - 55, 11, 32, 4, shirt);
   canvas.fillRoundRect(cx + 18, footY - 55, 11, 32, 4, shirt);
-  drawCuraleafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
+  drawLeafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
   canvas.drawLine(cx - 19, footY - 53, 160, 117, shirt);
   canvas.drawLine(160, 117, 156, 119, skin);
   canvas.drawLine(cx + 23, footY - 48, cx + 25, footY - 24, shirt);
@@ -4125,7 +4125,7 @@ void drawGownUpCutsceneFrame(int frame) {
   canvas.fillRoundRect(cx - 18, footY - 62, 36, 42, 8, shirt);
   canvas.fillRoundRect(cx - 23, footY - 55, 8, 32, 4, shirt);
   canvas.fillRoundRect(cx + 15, footY - 55, 8, 32, 4, shirt);
-  drawCuraleafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
+  drawLeafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
   drawFarmerHeadLarge(cx, cy, farmerCharacter);
 
   if (frame >= 4) {  // hairnet goes on in the locker room and stays on
@@ -4675,7 +4675,7 @@ void handleTouch(int x, int y) {
     return;
   }
   if (y < HEADER_H && x < 105) {
-    // Curaleaf leaf: open the grower ID menu; tap again to go back.
+    // Leaf: open the grower ID menu; tap again to go back.
     if (page == GROWER_MENU) {
       page = growerMenuReturn;
     } else {
@@ -5398,7 +5398,7 @@ void showBootSplash() {
   // blitted atomically each step - no erase-then-redraw flicker.
   canvas.fillScreen(TFT_BLACK);
   canvas.setTextColor(TFT_WHITE, TFT_BLACK);
-  canvas.drawCentreString("CURALEAF", 160, 134, 4);
+  canvas.drawCentreString("WINFLORIDA", 160, 134, 4);
   canvas.setTextColor(0x9EFB, TFT_BLACK);
   canvas.drawCentreString("GARDEN SIM", 160, 176, 2);
   // Firmware tagline: tiny dim line under the title, handy after OTA swaps.
@@ -5417,7 +5417,7 @@ void showBootSplash() {
     for (int row = 0; row < 24; ++row) {
       for (int col = 0; col < 24; ++col) {
         int bit = row * 24 + col;
-        if (curaleafLogoMask[bit >> 3] & (0x80 >> (bit & 7)))
+        if (winLeafLogoMask[bit >> 3] & (0x80 >> (bit & 7)))
           spr.fillRect(col * 3, row * 3, 3, 3, rgb565(v - 18, v, v - 10));
       }
     }

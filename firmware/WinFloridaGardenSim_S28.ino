@@ -31,8 +31,8 @@ public:
     ftRead(0x03, d, 4);
     int rawX = ((d[0] & 0x0F) << 8) | d[1];   // portrait 0..239
     int rawY = ((d[2] & 0x0F) << 8) | d[3];   // portrait 0..319
-    p.x = rawY;            // rotation 1 landscape on the 480x320 panel
-    p.y = 319 - rawX;
+    p.x = rawY;            // rotation 1 landscape on the 240x320 panel
+    p.y = 239 - rawX;
     p.z = 1000;
     return p;
   }
@@ -134,8 +134,8 @@ const int SCREEN_H = 240;
 // True-scale drawing layer maps game space (320x240, where the layout is
 // authored) onto the 4" board's 480x320 panel: 1.5x horizontally, 4/3
 // vertically. Touch hitboxes stay in game space and never change.
-const int PANEL_W = 480;
-const int PANEL_H = 320;
+const int PANEL_W = 320;
+const int PANEL_H = 240;
 const int ART_W = 178;
 const int ART_H = 144;
 uint8_t bmpRow[ART_W * 3 + 4];
@@ -185,8 +185,8 @@ const uint16_t ACCENT_DARK = 0x3D66;
 const uint16_t GOLD = 0xFEA0;
 const uint16_t RED = 0xE986;
 
-// Small 24x24 alpha-cut mask made from the user's Curaleaf logo PNG.
-const uint8_t curaleafLogoMask[72] PROGMEM = {
+// Small 24x24 alpha-cut mask of the WinFlorida leaf logo.
+const uint8_t winLeafLogoMask[72] PROGMEM = {
   0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7F,0x80,0x01,0xFF,0xE0,
   0x07,0x80,0x78,0x0E,0x00,0x1C,0x1C,0x00,0x0C,0x18,0x00,0xC0,
   0x38,0x1F,0xC0,0x30,0x78,0x80,0x30,0xC1,0x80,0x31,0x81,0x80,
@@ -308,7 +308,7 @@ uint8_t dryStreakTicks = 0;         // consecutive ticks the plant has been <20%
 bool plantDeathAnimationRequested = false;
 bool pestAnimationRequested = false;
 
-const char DEVICE_BRAND[] = "Curaleaf";
+const char DEVICE_BRAND[] = "WinFlorida";
 const uint16_t NEARBY_MAGIC = 0xC47A;
 const uint8_t PACKET_HELLO = 1;
 const uint8_t PACKET_MESSAGE = 2;
@@ -412,8 +412,8 @@ void drawGardenActions();
 void waitForCutsceneContinue();
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v38"
-#define FW_BOARD    "S3"
+#define FW_VERSION "v39"
+#define FW_BOARD    "S28"
 #define FW_DATE    "Nov 20"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
 
@@ -478,16 +478,18 @@ unsigned long drumNext = 0;   // when the next scheduled hit fires
 bool drumPlaying = false;
 
 // --- True-scale canvas -------------------------------------------------------
-inline int SX(int x) { return (int)((int32_t)x * 3 / 2); }
-inline int SY(int y) { return (int)((int32_t)y * 4 / 3); }
-inline int SWD(int x, int w) { return SX(x + w) - SX(x); }
-inline int SHD(int y, int h) { return SY(y + h) - SY(y); }
-inline int scaleR(int r) { return (r * 17 + 6) / 12; }  // ~1.417x radius
+// 2.8" S3 board (ES3C28P): the panel is 320x240 landscape — the game space is
+// authored 1:1 for it, so no scaling.
+inline int SX(int x) { return x; }
+inline int SY(int y) { return y; }
+inline int SWD(int x, int w) { return w; }
+inline int SHD(int y, int h) { return h; }
+inline int scaleR(int r) { return r; }
 
 struct GameCanvas {
   TFT_eSPI *tft;
-  // NB: tft->fillScreen() uses the sprite's inherited 320x480 bounds and
-  // would wipe only part of the 480-wide buffer - fill via the scaled path.
+  // NB: tft->fillScreen() can use inherited bounds that don't match the
+  // buffer size on some builds - fill via the scaled path instead.
   void fillScreen(uint16_t c) { fillRect(0, 0, SCREEN_W, SCREEN_H, c); }
   void fillRect(int x, int y, int w, int h, uint16_t c) {
     tft->fillRect(SX(x), SY(y), SWD(x, w), SHD(y, h), c);
@@ -500,15 +502,6 @@ struct GameCanvas {
   }
   void drawFastHLine(int x, int y, int w, uint16_t c) {
     tft->drawFastHLine(SX(x), SY(y), SWD(x, w), c);
-  }
-  // Fills every PHYSICAL row of the logical band [y, y+1). SY() rounds down,
-  // so on the 480x320 panel a logical band can span two panel rows; drawing
-  // only SY(y) skips one physical row whenever the band is 2 rows tall —
-  // which shows up as horizontal lines across gradients and bitmaps.
-  void drawBandHLine(int x, int y, int w, uint16_t c) {
-    int py1 = SY(y + 1);
-    for (int py = SY(y); py < py1; ++py)
-      tft->drawFastHLine(SX(x), py, SWD(x, w), c);
   }
   void drawFastVLine(int x, int y, int h, uint16_t c) {
     tft->drawFastVLine(SX(x), SY(y), SHD(y, h), c);
@@ -687,7 +680,6 @@ static void audioInit() {
 }
 
 // Fill the DMA ring: mix the lead and drum square voices into 16-bit stereo.
-
 // --- PCM sample voices -------------------------------------------------------
 // Boot chant (one-shot crowd chant) then the theme loop, both IMA ADPCM,
 // 4-bit, 16 kHz mono, stored in flash. One decoder chain serves whichever
@@ -763,6 +755,7 @@ static inline int32_t pcmNextSample() {
 }
 
 static int16_t stereoBuf[480 * 2];
+
 static void audioSynthChunk() {
   const uint32_t PHASE_STEP = (uint32_t)(4294967296.0 / AUDIO_RATE);
   for (int i = 0; i < 480; ++i) {
@@ -910,11 +903,11 @@ uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-void drawCuraleafLogo(int x, int y, int scale, uint16_t color) {
+void drawLeafLogo(int x, int y, int scale, uint16_t color) {
   for (int row = 0; row < 24; ++row) {
     for (int col = 0; col < 24; ++col) {
       int bitIndex = row * 24 + col;
-      uint8_t packed = pgm_read_byte(&curaleafLogoMask[bitIndex >> 3]);
+      uint8_t packed = pgm_read_byte(&winLeafLogoMask[bitIndex >> 3]);
       if (packed & (0x80 >> (bitIndex & 7))) {
         if (scale == 1) game.fillRect(x + col, y + row, 1, 1, color);
         else game.fillRect(x + col * scale, y + row * scale, scale, scale, color);
@@ -987,7 +980,7 @@ uint8_t nextSeededStrain(uint8_t from, int dir) {
 }
 
 
-// Curaleaf menu staples + cultivation names, easy -> hard display order.
+// WinFlorida menu staples + cultivation names, easy -> hard display order.
 const char *strainNames[STRAIN_COUNT] = {
   "Northern Lights", "Blue Dream", "Banana Papaya", "Superbuff Cherry", "Jack Herer",
   "Granddaddy Purple", "White Widow", "Blue Lobster", "OG Kush", "Sour Diesel",
@@ -2034,9 +2027,9 @@ void drawBatteryStatus(int x, int cy) {
 void drawHeader() {
   game.fillRect(0, 0, SCREEN_W, HEADER_H, 0x0861);
   game.drawFastHLine(0, HEADER_H - 1, SCREEN_W, 0x4D89);
-  drawCuraleafLogo(7, 2, 1, TFT_WHITE);
+  drawLeafLogo(7, 2, 1, TFT_WHITE);
   game.setTextColor(TEXT_MAIN, 0x0861);
-  game.drawString("CURALEAF", 35, 4, 2);
+  game.drawString("WINFLORIDA", 35, 4, 2);
   game.setTextColor(TEXT_DIM, 0x0861);
   game.drawString(growerName, 36, 18, 1);
 
@@ -2051,20 +2044,16 @@ void drawHeader() {
   // Stoned meter: 10 levels, from Sober to Stoned as FUCK.
   uint8_t sIdx = min(9, (int)(stonedLevel / 10));
   uint8_t lit = min(10, (int)((stonedLevel + 9) / 10));
-  // Mini head + stoned meter as one centered block: head spans cx-9..cx+9,
-  // meter track cx+12..cx+102, so the block's center is cx+46.5 — cx=114 puts
-  // it on the screen's horizontal center (160) and still clears the CURALEAF
-  // wordmark (ends near x=99) and the money readout (starts near x=218).
-  drawCharacterMini(114, 0, farmerCharacter);   // mini head: current grower
+  drawCharacterMini(118, 0, farmerCharacter);   // mini head: current grower
   game.setTextColor(TEXT_DIM, 0x0861);
-  game.drawString(stonedLevelNames[sIdx], 127, 3, 1);
-  game.fillRoundRect(126, 14, 90, 7, 3, 0x0630);
+  game.drawString(stonedLevelNames[sIdx], 131, 3, 1);
+  game.fillRoundRect(130, 14, 90, 7, 3, 0x0630);
   for (uint8_t i = 0; i < lit; ++i) {
     uint16_t seg = i < 3 ? rgb565(70, 180, 90)
                  : i < 6 ? rgb565(230, 200, 60)
                  : i < 8 ? rgb565(240, 140, 40)
                  : rgb565(235, 60, 60);
-    game.fillRect(127 + i * 9, 15, 8, 5, seg);
+    game.fillRect(124 + i * 9, 15, 8, 5, seg);
   }
 
   drawGearIcon(301, 14);
@@ -2180,7 +2169,7 @@ void drawGardenBackdrop() {
     uint8_t r = 7 + (uint8_t)((ay * 3) / 136);
     uint8_t g = 23 + (uint8_t)((ay * 14) / 136);
     uint8_t b = 25 + (uint8_t)((ay * 9) / 136);
-    game.drawBandHLine(0, y, 178, rgb565(r, g, b));
+    game.drawFastHLine(0, y, 178, rgb565(r, g, b));
   }
   // Dark background grid.
   static const int darkCols[5] = {7, 43, 88, 133, 170};
@@ -2488,14 +2477,9 @@ bool drawPlantBitmapFullScreenRegion(int xStart, int yStart, int xEnd, int yEnd)
         int screenY = height > 0 ? ART_H - 1 - row : row;
         int y0 = (screenY * SCREEN_H) / ART_H;
         int y1 = ((screenY + 1) * SCREEN_H) / ART_H;
-        // Push every PHYSICAL row of each logical band — SY() rounds down, so
-        // pushing only SY(y) skips one panel row whenever the band spans two
-        // rows (the horizontal lines across the fullscreen picture).
-        int py0 = SY(y0), py1 = SY(y1);
-        int pyStart = SY(yStart), pyEnd = SY(yEnd);
-        for (int py = py0; py < py1; ++py) {
-          if (py >= pyStart && py < pyEnd) {
-            blitPanelRow(SX(xStart), py, SWD(xStart, xEnd - xStart),
+        for (int y = y0; y < y1; ++y) {
+          if (y >= yStart && y < yEnd) {
+            blitPanelRow(SX(xStart), SY(y), SWD(xStart, xEnd - xStart),
                          &scaledPlantRow[SX(xStart)]);
           }
         }
@@ -2557,7 +2541,7 @@ void drawFullScreenGardenFallback() {
     uint8_t r = 5 + (uint8_t)(blend * 10);
     uint8_t g = 19 + (uint8_t)(blend * 30);
     uint8_t b = 21 + (uint8_t)(blend * 20);
-    game.drawBandHLine(0, y, SCREEN_W, rgb565(r, g, b));
+    game.drawFastHLine(0, y, SCREEN_W, rgb565(r, g, b));
   }
   game.drawFastVLine(13, 0, SCREEN_H - 14, rgb565(29, 53, 51));
   game.drawFastVLine(306, 0, SCREEN_H - 14, rgb565(29, 53, 51));
@@ -2579,7 +2563,7 @@ void restoreFullScreenFallbackRegion() {
     uint8_t r = 5 + (uint8_t)(blend * 10);
     uint8_t g = 19 + (uint8_t)(blend * 30);
     uint8_t b = 21 + (uint8_t)(blend * 20);
-    game.drawBandHLine(left, y, right - left, rgb565(r, g, b));
+    game.drawFastHLine(left, y, right - left, rgb565(r, g, b));
   }
   game.drawFastVLine(306, 80, 130, rgb565(29, 53, 51));
   game.drawFastHLine(left, 106, right - left, rgb565(23, 44, 42));
@@ -2926,25 +2910,6 @@ void drawSeedShopPage() {
   drawButton(10, 176, 300, 28, line, locked ? PANEL_LIGHT : ACCENT_DARK,
              locked ? TEXT_DIM : TFT_WHITE);
 }
-void drawMarketCard(int y, const char *title, uint16_t quantity, const char *price,
-                    bool enabled) {
-  game.fillRoundRect(10, y, 300, 52, 6, PANEL);
-  game.drawRoundRect(10, y, 300, 52, 6, PANEL_LIGHT);
-  game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(title, 19, y + 6, 2);
-  char amount[18];
-  snprintf(amount, sizeof(amount), "x%u", quantity);
-  game.setTextColor(GOLD, PANEL);
-  game.drawString(amount, 19, y + 28, 1);
-  game.setTextColor(TEXT_DIM, PANEL);
-  game.drawString(price, 54, y + 28, 1);
-  drawButton(164, y + 12, 62, 29, "SELL 1", enabled ? ACCENT_DARK : PANEL_LIGHT,
-             enabled ? TFT_WHITE : TEXT_DIM);
-  drawButton(234, y + 12, 68, 29, "SELL ALL", enabled ? ACCENT_DARK : PANEL_LIGHT,
-             enabled ? TFT_WHITE : TEXT_DIM);
-}
-
-// Big-card grid like the seed catalog: the whole card is the tap target.
 void drawMarketCard(int x, int y, const char *label, const char *value, bool enabled) {
   uint16_t fill = PANEL;
   game.fillRoundRect(x, y, 152, 38, 5, fill);
@@ -2956,9 +2921,7 @@ void drawMarketCard(int x, int y, const char *label, const char *value, bool ena
 }
 
 void drawMarketPage() {
-  drawPageTitle("VIRTUAL MARKET",
-                marketGearMode ? "Tap a card to buy gear"
-                               : "Tap a sell card, pick a strain, then confirm");
+  drawPageTitle("VIRTUAL MARKET", marketGearMode ? "Buy gear - smoke break is on the stash page" : "Tap a sell card, pick a strain, then confirm");
   drawButton(12, 70, 144, 28, "SELL", marketGearMode ? PANEL_LIGHT : ACCENT_DARK);
   drawButton(164, 70, 144, 28, "GEAR", marketGearMode ? ACCENT_DARK : PANEL_LIGHT);
   char units[24];
@@ -3051,6 +3014,8 @@ void drawStashPage() {
   drawButton(163, 174, 152, 28, "SMOKE BREAK", ACCENT_DARK);
   if (smokeMenuOpen) drawSmokeBreakMenu();   // chooser covers the jar list
 }
+
+// Smoke-break chooser over the stash page: the three gear + product combos.
 void drawSmokeBreakMenu() {
   game.fillRoundRect(5, 56, 310, 149, 8, PANEL);
   game.drawRoundRect(5, 56, 310, 149, 8, PANEL_LIGHT);
@@ -3139,8 +3104,8 @@ void drawGrowerIdCard() {
 #include <Update.h>
 
 static const char *OTA_RELEASE_BASE =
-    "https://github.com/VYBN3D/curaleaf-garden/releases/latest/download/";
-static const char *OTA_BIN_NAME = "Curaleaf_GardenV5_S3.ino.bin";
+    "https://github.com/VYBN3D/WinFloridaGardenSim/releases/latest/download/";
+static const char *OTA_BIN_NAME = "WinFloridaGardenSim_S28.ino.bin";
 
 static bool wifiConnected() { return WiFi.status() == WL_CONNECTED; }
 
@@ -3705,22 +3670,21 @@ void drawOptionsPage() {
   if (musicVolume) snprintf(volLabel, sizeof(volLabel), "%u%%", musicVolume);
   else strlcpy(volLabel, "OFF", sizeof(volLabel));
   // Grid sits below the settings title band (title + subtitle cover y 28..68).
-  // 4-inch board: stretch the option cards and push UPDATE toward the bottom.
-  drawOptionsCard(5, 70, 152, 40, "GAME SPEED",
+  drawOptionsCard(5, 72, 152, 36, "GAME SPEED",
                   gameSpeed == 0 ? "RELAXED" : gameSpeed == 1 ? "QUICK" : "EXTREME", PANEL);
-  drawOptionsCard(163, 70, 152, 40, "MUSIC", volLabel, PANEL);
-  drawOptionsCard(5, 114, 152, 40, "FAST HARVEST", "TAP", ACCENT_DARK);
-  drawOptionsCard(163, 114, 152, 40, "CHEATS", "TAP", PANEL_LIGHT);
+  drawOptionsCard(163, 72, 152, 36, "MUSIC", volLabel, PANEL);
+  drawOptionsCard(5, 112, 152, 36, "FAST HARVEST", "TAP", ACCENT_DARK);
+  drawOptionsCard(163, 112, 152, 36, "CHEATS", "TAP", PANEL_LIGHT);
   // Bottom row: two big card buttons side by side (the whole card is the
   // tap target). Must stay above the nav bar (NAV_Y = 207) or the nav touch
   // handler steals the taps (that was the STASH-jump bug).
-  drawOptionsCard(5, 158, 152, 46, "RESET GAME",
+  drawOptionsCard(5, 154, 152, 48, "RESET GAME",
                   resetArmed ? "TAP AGAIN!" : "ERASES SAVE",
                   resetArmed ? RED : PANEL_LIGHT);
-  drawOptionsCard(163, 158, 152, 46, "UPDATE", "WIFI / OTA", PANEL_LIGHT);
+  drawOptionsCard(163, 154, 152, 48, "UPDATE", "WIFI / OTA", PANEL_LIGHT);
 }
 
-// Grower menu, opened from the Curaleaf leaf: your grower as an ID card.
+// Grower menu, opened from the leaf: your grower as an ID card.
 void drawGrowerMenuPage() {
   drawGrowerIdCard();
   // Full-width, big-font nav rows — the whole row is the tap target.
@@ -3949,11 +3913,11 @@ void drawNearbyPage() {
     // Picker rows: big arrows on the card edges pick the strain; the big
     // SEND button in the middle is a separate, deliberate tap.
     bool seedsReady = seedsByStrain[sendSeedStrain] >= 4 && selectedNearbyPeerValid();
-    char seedLine[34];
     game.fillRoundRect(5, 70, 310, 34, 5, PANEL);
     game.drawRoundRect(5, 70, 310, 34, 5, seedsReady ? ACCENT : PANEL_LIGHT);
     drawButton(9, 74, 28, 26, "<", PANEL_LIGHT);
     drawButton(283, 74, 28, 26, ">", PANEL_LIGHT);
+    char seedLine[34];
     snprintf(seedLine, sizeof(seedLine), "SEND %s x%u", strainNames[sendSeedStrain],
              seedsByStrain[sendSeedStrain]);
     drawButton(41, 74, 238, 26, seedLine,
@@ -4330,7 +4294,6 @@ void finishHarvest(bool makeHash) {
     moldLossUnits -= moldRescuedUnits;
     lastHarvestUnits += moldRescuedUnits;
   }
-  moldAnimationRequested = moldLossUnits > 0;
   if (makeHash) {
     // Vigor at harvest grades the batch: it sets what the jar sells for.
     hashQualityByStrain[activeStrain] = blendQuality(hashQualityByStrain[activeStrain],
@@ -4890,7 +4853,7 @@ void drawWateringFrame(int frame) {
   game.drawLine(x - 5, 126, x - 11, 124, skin);
   game.drawLine(x + 33, 135, x + 37, 136, shirt);
   game.drawLine(x + 37, 136, x + 40, 137, skin);
-  drawCuraleafLogo(x + 8, 125, 1, TFT_WHITE);
+  drawLeafLogo(x + 8, 125, 1, TFT_WHITE);
   drawFarmerHeadLarge(x + 20, 112, farmerCharacter);
 
   int canX = x - 20;
@@ -4956,7 +4919,7 @@ void drawFarmerInspector(int pose) {
   game.fillRoundRect(cx - torsoW / 2, footY - 18 - torsoH, torsoW, torsoH, 6, shirt);
   game.fillRoundRect(cx - torsoW / 2 - 4, footY - 18 - torsoH + 5, 6, torsoH - 8, 3, shirt);
   game.fillRoundRect(cx + torsoW / 2 - 2, footY - 18 - torsoH + 5, 6, torsoH - 8, 3, shirt);
-  drawCuraleafLogo(cx - 12, footY - 18 - torsoH + 3, 1, TFT_WHITE);
+  drawLeafLogo(cx - 12, footY - 18 - torsoH + 3, 1, TFT_WHITE);
   game.drawLine(cx - torsoW / 2 - 3, footY - 31, cx - torsoW / 2, footY - 24, skin);
   game.drawLine(cx + torsoW / 2 + 1, footY - 31, cx + torsoW / 2 - 2, footY - 24, skin);
   drawFarmerHeadLarge(cx, footY - 59, farmerCharacter);
@@ -5071,7 +5034,7 @@ void drawSmokeCutsceneFrame(int frame) {
   game.fillRoundRect(cx - 23, footY - 62, 46, 42, 8, shirt);
   game.fillRoundRect(cx - 29, footY - 55, 11, 32, 4, shirt);
   game.fillRoundRect(cx + 18, footY - 55, 11, 32, 4, shirt);
-  drawCuraleafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
+  drawLeafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
   game.drawLine(cx - 19, footY - 53, 160, 117, shirt);
   game.drawLine(160, 117, 156, 119, skin);
   game.drawLine(cx + 23, footY - 48, cx + 25, footY - 24, shirt);
@@ -5313,7 +5276,7 @@ void drawGownUpCutsceneFrame(int frame) {
     for (int y = HEADER_H; y < NAV_Y; ++y) {
       float blend = (float)(y - HEADER_H) / (NAV_Y - HEADER_H);
       uint8_t v = 34 + (uint8_t)(blend * 22);
-      game.drawBandHLine(0, y, SCREEN_W, rgb565(v - 4, v + 8, v + 4));
+      game.drawFastHLine(0, y, SCREEN_W, rgb565(v - 4, v + 8, v + 4));
     }
     cx = 160;
     cy = zoomCy[frame];
@@ -5326,7 +5289,7 @@ void drawGownUpCutsceneFrame(int frame) {
     for (int y = HEADER_H; y < 172; ++y) {
       float blend = (float)(y - HEADER_H) / 144.0f;
       uint8_t v = 30 + (uint8_t)(blend * 26);
-      game.drawBandHLine(0, y, SCREEN_W, rgb565(v - 4, v + 8, v + 4));
+      game.drawFastHLine(0, y, SCREEN_W, rgb565(v - 4, v + 8, v + 4));
     }
     game.fillRect(0, 172, SCREEN_W, NAV_Y - 172, rgb565(38, 46, 42));
     game.drawFastHLine(0, 172, SCREEN_W, rgb565(58, 70, 60));
@@ -5349,7 +5312,7 @@ void drawGownUpCutsceneFrame(int frame) {
     for (int y = HEADER_H; y < 172; ++y) {
       float blend = (float)(y - HEADER_H) / 144.0f;
       uint8_t v = 30 + (uint8_t)(blend * 26);
-      game.drawBandHLine(0, y, SCREEN_W, rgb565(v - 4, v + 8, v + 4));
+      game.drawFastHLine(0, y, SCREEN_W, rgb565(v - 4, v + 8, v + 4));
     }
     game.fillRect(0, 172, SCREEN_W, NAV_Y - 172, rgb565(38, 46, 42));
     game.drawFastHLine(0, 172, SCREEN_W, rgb565(58, 70, 60));
@@ -5379,7 +5342,7 @@ void drawGownUpCutsceneFrame(int frame) {
       uint8_t r = 5 + (uint8_t)(blend * 10);
       uint8_t g = 19 + (uint8_t)(blend * 30);
       uint8_t b = 21 + (uint8_t)(blend * 20);
-      game.drawBandHLine(0, y, SCREEN_W, rgb565(r, g, b));
+      game.drawFastHLine(0, y, SCREEN_W, rgb565(r, g, b));
     }
     game.drawFastHLine(0, 70, SCREEN_W, rgb565(23, 44, 42));
     game.drawFastHLine(0, 118, SCREEN_W, rgb565(23, 44, 42));
@@ -5416,7 +5379,7 @@ void drawGownUpCutsceneFrame(int frame) {
   game.fillRoundRect(cx - 14, footY - 62, 28, 42, 7, shirt);
   game.fillRoundRect(cx - 19, footY - 55, 6, 32, 3, shirt);
   game.fillRoundRect(cx + 13, footY - 55, 6, 32, 3, shirt);
-  drawCuraleafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
+  drawLeafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
   drawFarmerHeadLarge(cx, cy, farmerCharacter);
 
   if (frame >= 4) {  // hairnet goes on in the locker room and stays on
@@ -6129,7 +6092,7 @@ void handleTouch(int x, int y) {
     return;
   }
   if (y < HEADER_H && x < 105) {
-    // Curaleaf leaf: open the grower ID menu; tap again to go back.
+    // Leaf: open the grower ID menu; tap again to go back.
     if (page == GROWER_MENU) {
       page = growerMenuReturn;
     } else {
@@ -6238,25 +6201,25 @@ void handleTouch(int x, int y) {
       break;
     case OPTIONS:
       // Big-card grid: each card is its own tap target, anywhere on the card.
-      if (y >= 70 && y < 110 && x < 160) {
+      if (y >= 72 && y < 108 && x < 160) {
         gameSpeed = (gameSpeed + 1) % 3;   // RELAXED -> QUICK -> EXTREME
         lastGameTick = millis();
         saveGame();
-      } else if (y >= 70 && y < 110) {
+      } else if (y >= 72 && y < 108) {
         // Volume steps: OFF -> 10 -> 20 -> ... -> 100 -> OFF
         musicVolume = musicVolume == 0 ? 10 : musicVolume >= 100 ? 0 : musicVolume + 10;
         if (musicVolume) startSong(backgroundSong);
         else { chipToneOff(); drumToneOff(); activeSong = nullptr; drumPlaying = false; }
         saveGame();
-      } else if (y >= 114 && y < 154 && x < 160) {
+      } else if (y >= 112 && y < 148 && x < 160) {
         prepareDemoHarvest();
-      } else if (y >= 114 && y < 154) {
+      } else if (y >= 112 && y < 148) {
         page = CHEAT_CODE;               // cheat console
         cheatEdit[0] = '\0';
         cheatFeedback[0] = '\0';
         render();
         return;
-      } else if (y >= 158 && y < 204) {
+      } else if (y >= 154 && y < 202) {
         if (x < 160) {
           if (resetArmed) resetGame();
           else {
@@ -7011,7 +6974,7 @@ void showBootSplash() {
   // blitted atomically each step - no erase-then-redraw flicker.
   game.fillScreen(TFT_BLACK);
   game.setTextColor(TFT_WHITE, TFT_BLACK);
-  game.drawCentreString("CURALEAF", 160, 134, 4);
+  game.drawCentreString("WINFLORIDA", 160, 134, 4);
   game.setTextColor(0x9EFB, TFT_BLACK);
   game.drawCentreString("GARDEN SIM", 160, 176, 2);
   // Firmware tagline: tiny dim line under the title, handy after OTA swaps.
@@ -7019,15 +6982,16 @@ void showBootSplash() {
   game.drawCentreString(FW_VERSION_FULL " - " FW_DATE, 160, 196, 1);
   presentFrame();
 
-  TFT_eSprite spr(&canvas);  // panel-bound sprite; blitted into the scaled view
-  // Logo block art scaled onto the 480x320 panel: 24 mask cells drawn with
-  // alternating 4/5 px blocks = 108x108, at the scaled (124,50) anchor.
+  TFT_eSprite spr(&canvas);  // panel-bound sprite; blitted into the game view
+  // Logo block art on the 320x240 panel: 24 mask cells drawn with
+  // alternating 2/4 px blocks = 72x72, centered above the title text so it
+  // never covers WINFLORIDA.
   int cellX[24], cellY[24];
   int acc = 0;
-  for (int i = 0; i < 24; ++i) { cellX[i] = acc; acc += (i % 2) ? 5 : 4; }
+  for (int i = 0; i < 24; ++i) { cellX[i] = acc; acc += (i % 2) ? 4 : 2; }
   acc = 0;
-  for (int i = 0; i < 24; ++i) { cellY[i] = acc; acc += (i % 2) ? 5 : 4; }
-  spr.createSprite(108, 108);
+  for (int i = 0; i < 24; ++i) { cellY[i] = acc; acc += (i % 2) ? 4 : 2; }
+  spr.createSprite(72, 72);
   const int frames = 20;
   for (int i = 0; i < frames; ++i) {
     float t = (float)i / (float)frames;
@@ -7037,12 +7001,12 @@ void showBootSplash() {
     for (int row = 0; row < 24; ++row) {
       for (int col = 0; col < 24; ++col) {
         int bit = row * 24 + col;
-        if (curaleafLogoMask[bit >> 3] & (0x80 >> (bit & 7)))
-          spr.fillRect(cellX[col], cellY[row], (col % 2) ? 5 : 4,
-                       (row % 2) ? 5 : 4, rgb565(v - 18, v, v - 10));
+        if (winLeafLogoMask[bit >> 3] & (0x80 >> (bit & 7)))
+          spr.fillRect(cellX[col], cellY[row], (col % 2) ? 4 : 2,
+                       (row % 2) ? 4 : 2, rgb565(v - 18, v, v - 10));
       }
     }
-    spr.pushSprite(SX(124), SY(50));
+    spr.pushSprite(SX(124), SY(28));
     delay(80);
     audioPump();  // keep the boot chant's DMA fed while the logo breathes
   }
@@ -7076,10 +7040,10 @@ void loadTouchCalibration() {
 // Converts the current touch to screen coordinates using the calibration.
 void readTouch(int &x, int &y) {
 #if defined(S3_CYD)
-  // FT6336U reports 480x320 display pixels; scale to game space.
+  // FT6336G reports 320x240 landscape pixels on this panel; 1:1 to game space.
   TS_Point raw = touchscreen.getPoint();
-  x = constrain(raw.x * 2 / 3, 0, SCREEN_W - 1);
-  y = constrain(raw.y * 3 / 4, 0, SCREEN_H - 1);
+  x = constrain(raw.x, 0, SCREEN_W - 1);
+  y = constrain(raw.y, 0, SCREEN_H - 1);
 #else
   TS_Point raw = touchscreen.getPoint();
   x = constrain(map(raw.x, touchRawXMin, touchRawXMax, 0, SCREEN_W - 1), 0, SCREEN_W - 1);
@@ -7107,7 +7071,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: boot chant + sampled theme loop\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: WinFlorida rebrand\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
