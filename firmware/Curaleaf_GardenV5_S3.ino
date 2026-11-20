@@ -410,10 +410,9 @@ void animatePestInvasion();
 void drawNearbyKeyboardRow(const char *keys, int count, int startX, int y);
 void drawGardenActions();
 void waitForCutsceneContinue();
-void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v34"
+#define FW_VERSION "v35"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -500,7 +499,6 @@ inline int scaleR(int r) { return (r * 17 + 6) / 12; }  // ~1.417x radius
 
 struct GameCanvas {
   TFT_eSPI *tft;
-  operator TFT_eSPI*() { return tft; }  // lets TFT_eSprite bind to the panel
   // NB: tft->fillScreen() uses the sprite's inherited 320x480 bounds and
   // would wipe only part of the 480-wide buffer - fill via the scaled path.
   void fillScreen(uint16_t c) { fillRect(0, 0, SCREEN_W, SCREEN_H, c); }
@@ -1042,19 +1040,7 @@ int16_t cheapestHashStrain() {
 }
 
 // Priciest non-empty bucket: selling one unit nets the top-shelf price.
-int16_t priciestStashStrain() {
-  int16_t best = -1;
-  for (uint8_t i = 0; i < STRAIN_COUNT; ++i)
-    if (stashByStrain[i] && (best < 0 || strainFlowerValue[i] > strainFlowerValue[best])) best = i;
-  return best;
-}
 
-int16_t priciestHashStrain() {
-  int16_t best = -1;
-  for (uint8_t i = 0; i < STRAIN_COUNT; ++i)
-    if (hashByStrain[i] && (best < 0 || strainHashValue[i] > strainHashValue[best])) best = i;
-  return best;
-}
 
 // "$X each" when every bucket sells at the same price, "$X-$Y each" otherwise.
 void stashPriceText(char *out, size_t len) {
@@ -1649,9 +1635,6 @@ void serviceNearby() {
   presentWithOverlays();
 }
 
-void sendNearbyHelloNow() {
-  if (nearbyReady) sendNearbyPacket(BROADCAST_MAC, PACKET_HELLO, 0, "");
-}
 
 void drawButton(int x, int y, int w, int h, const char *label,
                 uint16_t fill, uint16_t textColor = TEXT_MAIN) {
@@ -1663,101 +1646,6 @@ void drawButton(int x, int y, int w, int h, const char *label,
   game.drawCentreString(label, x + w / 2, y + (h - textHeight) / 2, font);
 }
 
-void drawFarmerAvatar() {
-  uint16_t hair = rgb565(35, 27, 26);
-  uint16_t skin = farmerCharacter == 2 ? rgb565(133, 84, 61) : rgb565(230, 184, 143);
-  game.fillCircle(301, 14, 11, 0x2125);
-  if (farmerCharacter == 5) {
-    // James: brown-gray, medium-length hair swept up into a pompadour.
-    uint16_t jHair = rgb565(124, 110, 97), jLight = rgb565(168, 156, 142);
-    game.fillRoundRect(294, 6, 14, 13, 5, jHair);
-    game.fillCircle(301, 14, 6, skin);
-    game.fillRoundRect(294, 4, 14, 6, 3, jHair);
-    game.fillCircle(299, 5, 3, jHair);
-    game.drawFastHLine(296, 4, 8, jLight);
-    game.fillRect(294, 9, 2, 8, jHair);
-    game.fillRect(306, 9, 2, 8, jHair);
-    game.drawPixel(299, 13, TFT_BLACK);
-    game.drawPixel(303, 13, TFT_BLACK);
-    game.drawFastHLine(299, 17, 5, rgb565(150, 90, 80));
-    game.drawFastHLine(299, 16, 5, rgb565(152, 146, 140));   // goatee
-    game.fillRect(300, 18, 3, 2, rgb565(152, 146, 140));
-  } else if (farmerCharacter == 1) {
-    game.fillRoundRect(293, 4, 16, 8, 5, rgb565(19, 21, 24));
-    game.fillCircle(301, 14, 7, skin);
-    game.fillRoundRect(294, 5, 14, 7, 4, rgb565(19, 21, 24));
-    game.fillRoundRect(295, 12, 5, 4, 1, rgb565(10, 15, 19));
-    game.fillRoundRect(302, 12, 5, 4, 1, rgb565(10, 15, 19));
-    game.drawFastHLine(300, 13, 2, rgb565(10, 15, 19));
-    game.drawFastHLine(298, 17, 7, rgb565(82, 51, 39));
-    game.fillRect(297, 19, 9, 3, rgb565(205, 207, 202));
-  } else if (farmerCharacter == 2) {
-    game.fillRoundRect(293, 4, 16, 20, 7, hair);
-    game.fillCircle(301, 14, 6, skin);
-    game.fillRect(294, 11, 3, 12, hair);
-    game.fillRect(306, 11, 3, 12, hair);
-    game.fillRoundRect(295, 11, 5, 4, 1, rgb565(24, 28, 30));
-    game.fillRoundRect(302, 11, 5, 4, 1, rgb565(24, 28, 30));
-    game.drawFastHLine(300, 13, 2, rgb565(24, 28, 30));
-    game.drawFastHLine(297, 17, 8, hair);
-    game.drawFastHLine(299, 20, 5, TFT_WHITE);
-  } else if (farmerCharacter == 4) {
-    game.fillRoundRect(293, 4, 16, 20, 7, hair);
-    game.fillCircle(301, 13, 6, skin);
-    game.fillRoundRect(295, 5, 12, 7, 5, hair);
-    game.fillRect(294, 11, 3, 12, hair);
-    game.fillRect(306, 11, 3, 12, hair);
-    game.fillRoundRect(295, 11, 5, 4, 1, rgb565(10, 13, 16));
-    game.fillRoundRect(302, 11, 5, 4, 1, rgb565(10, 13, 16));
-    game.drawFastHLine(300, 13, 2, rgb565(10, 13, 16));
-    game.drawFastHLine(298, 18, 7, rgb565(82, 51, 39));
-  } else if (farmerCharacter == 3) {
-    hair = rgb565(210, 176, 104);
-    game.fillRoundRect(293, 4, 16, 20, 7, hair);
-    game.fillCircle(301, 13, 6, skin);
-    game.fillRoundRect(295, 5, 12, 7, 5, hair);
-    game.drawFastVLine(294, 12, 9, rgb565(239, 216, 151));
-    game.drawFastVLine(307, 12, 9, rgb565(239, 216, 151));
-    game.drawPixel(299, 12, TFT_BLACK);
-    game.drawPixel(303, 12, TFT_BLACK);
-    game.drawFastHLine(298, 18, 7, rgb565(167, 83, 78));
-    game.drawFastHLine(299, 19, 5, TFT_WHITE);
-  } else if (farmerCharacter == 8) {
-    // Pedro: short black hair, dark shades, full beard.
-    game.fillRoundRect(294, 5, 14, 7, 4, rgb565(30, 26, 24));    // hair
-    game.fillCircle(301, 13, 6, rgb565(212, 168, 138));
-    game.fillRect(294, 9, 3, 8, rgb565(30, 26, 24));
-    game.fillRect(306, 9, 3, 8, rgb565(30, 26, 24));
-    game.fillRoundRect(295, 10, 5, 4, 1, TFT_BLACK);
-    game.fillRoundRect(302, 10, 5, 4, 1, TFT_BLACK);
-    game.drawFastHLine(300, 12, 2, TFT_BLACK);
-    game.drawFastHLine(297, 16, 8, rgb565(62, 52, 47));          // beard
-    game.fillRoundRect(296, 17, 10, 5, 2, rgb565(62, 52, 47));
-  } else if (farmerCharacter == 9) {
-    // Benji: blonde dreads, Ray-Bans, mustache + chin beard.
-    game.fillRoundRect(294, 5, 14, 7, 4, rgb565(146, 114, 70));
-    game.fillCircle(301, 13, 6, rgb565(230, 184, 143));
-    game.fillRect(294, 9, 3, 9, rgb565(146, 114, 70));
-    game.fillRect(306, 9, 3, 9, rgb565(146, 114, 70));
-    game.fillRoundRect(295, 10, 5, 4, 1, TFT_BLACK);
-    game.fillRoundRect(302, 10, 5, 4, 1, TFT_BLACK);
-    game.drawFastHLine(300, 12, 2, TFT_BLACK);
-    game.drawFastHLine(297, 15, 8, rgb565(66, 46, 32));
-    game.fillRoundRect(299, 18, 5, 2, 1, rgb565(66, 46, 32));
-    game.drawPixel(298, 17, rgb565(66, 46, 32));
-    game.drawPixel(304, 17, rgb565(66, 46, 32));
-  } else {
-    game.fillRoundRect(293, 4, 16, 20, 7, hair);
-    game.fillCircle(301, 13, 6, skin);
-    game.fillRoundRect(295, 5, 12, 7, 5, hair);
-    game.fillRect(294, 12, 3, 9, hair);
-    game.fillRect(306, 12, 3, 9, hair);
-    game.drawPixel(299, 12, TFT_BLACK);
-    game.drawPixel(303, 12, TFT_BLACK);
-    game.drawFastHLine(298, 15, 7, rgb565(52, 37, 33));
-    game.drawFastHLine(299, 18, 5, TFT_WHITE);
-  }
-}
 
 void drawFarmerHeadLarge(int cx, int cy, uint8_t character) {
   uint16_t hair = character == 3 ? rgb565(210, 176, 104) : rgb565(35, 27, 26);
@@ -2733,14 +2621,6 @@ void drawPageTitle(const char *title, const char *subtitle) {
   game.drawString(subtitle, 12, 60, 1);
 }
 
-void drawShopCard(int y, const char *label, const char *buttonText, bool enabled) {
-  game.fillRoundRect(10, y, 300, 21, 4, PANEL);
-  game.drawRoundRect(10, y, 300, 21, 4, PANEL_LIGHT);
-  game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(label, 18, y + 6, 1);
-  drawButton(257, y + 1, 45, 19, buttonText, enabled ? ACCENT_DARK : PANEL_LIGHT,
-             enabled ? TFT_WHITE : TEXT_DIM);
-}
 
 // Big-card grid style shared with the seed catalog: the whole card is the
 // tap target, an ACCENT border means "affordable right now".
@@ -2996,49 +2876,13 @@ void drawSmokeBreakMenu() {
   drawButton(5, 176, 310, 27, "BACK", PANEL_LIGHT);   // full-width row
 }
 
-void drawOptionsRow(int y, const char *label, const char *value) {
-  game.fillRoundRect(12, y, 296, 20, 4, PANEL);
-  game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(label, 21, y + 6, 1);
-  drawButton(213, y + 2, 84, 16, value, ACCENT_DARK);
-}
 
 // Big tappable settings rows for the full-screen pages.
-void drawCompactNavRow(int y, const char *label) {
-  game.fillRoundRect(12, y, 296, 24, 6, PANEL);
-  game.drawRoundRect(12, y, 296, 24, 6, PANEL_LIGHT);
-  game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(label, 20, y + 4, 2);
-  game.setTextColor(TEXT_DIM, PANEL);
-  game.drawRightString(">", 296, y + 5, 2);
-}
 
 // Row with an inline value button (Music ON/OFF, inversion, ...).
-void drawCompactValueRow(int y, const char *label, const char *value) {
-  game.fillRoundRect(12, y, 296, 24, 6, PANEL);
-  game.drawRoundRect(12, y, 296, 24, 6, PANEL_LIGHT);
-  game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(label, 20, y + 4, 2);
-  drawButton(213, y + 2, 84, 20, value, ACCENT_DARK);
-}
 
-void drawSettingsNavRow(int y, const char *label) {
-  game.fillRoundRect(12, y, 296, 44, 8, PANEL);
-  game.drawRoundRect(12, y, 296, 44, 8, PANEL_LIGHT);
-  game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(label, 24, y + 14, 2);
-  game.setTextColor(TEXT_DIM, PANEL);
-  game.drawRightString(">", 296, y + 14, 2);
-}
 
 // Row with an inline value button (Music ON/OFF, inversion, ...).
-void drawSettingsRow(int y, const char *label, const char *value) {
-  game.fillRoundRect(12, y, 296, 44, 8, PANEL);
-  game.drawRoundRect(12, y, 296, 44, 8, PANEL_LIGHT);
-  game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawString(label, 24, y + 14, 2);
-  drawButton(212, y + 10, 84, 24, value, ACCENT_DARK);
-}
 
 // Fixed title strip above the scrollable settings content.
 void drawSettingsTitle() {
@@ -3654,11 +3498,11 @@ void drawOptionsPage() {
   else strlcpy(volLabel, "OFF", sizeof(volLabel));
   // Grid sits below the settings title band (title + subtitle cover y 28..68).
   // 4-inch board: stretch the option cards and push UPDATE toward the bottom.
-  drawOptionsCard(5, 64, 152, 42, "GAME SPEED",
+  drawOptionsCard(5, 70, 152, 40, "GAME SPEED",
                   gameSpeed == 0 ? "RELAXED" : gameSpeed == 1 ? "QUICK" : "EXTREME", PANEL);
-  drawOptionsCard(163, 64, 152, 42, "MUSIC", volLabel, PANEL);
-  drawOptionsCard(5, 110, 152, 42, "FAST HARVEST", "TAP", ACCENT_DARK);
-  drawOptionsCard(163, 110, 152, 42, "CHEATS", "TAP", PANEL_LIGHT);
+  drawOptionsCard(163, 70, 152, 40, "MUSIC", volLabel, PANEL);
+  drawOptionsCard(5, 114, 152, 40, "FAST HARVEST", "TAP", ACCENT_DARK);
+  drawOptionsCard(163, 114, 152, 40, "CHEATS", "TAP", PANEL_LIGHT);
   // Bottom row: two big card buttons side by side (the whole card is the
   // tap target). Must stay above the nav bar (NAV_Y = 207) or the nav touch
   // handler steals the taps (that was the STASH-jump bug).
@@ -5410,8 +5254,7 @@ void drawHashWashFrame(int frame) {
   game.drawLine(230, 62, sweep - 2, 145, woodDark);
   game.fillTriangle(sweep - 9, 141, sweep + 9, 141, sweep, 159, woodDark);
   game.fillTriangle(sweep - 6, 142, sweep + 6, 142, sweep, 155, woodLight);
-  game.drawLine(235, 57, 231, 69, rgb565(230, 184, 143));
-  game.fillCircle(231, 69, 3, rgb565(230, 184, 143));
+  drawGrowerWorker(285, 178, 236, 66);   // grower gripping the paddle handle
 
   if (frame >= 2 && frame <= 5) {
     for (int ripple = 0; ripple < 3; ++ripple) {
@@ -5452,6 +5295,61 @@ void animateHashWash() {
   waitForCutsceneContinue();
 }
 
+// An actual gripping hand wrapped around a tool: fist block, knuckle
+// creases and a thumb, so the arm ends in a hand instead of a ball.
+void drawGrippingHand(int hx, int hy, int dir) {
+  uint16_t skin = farmerCharacter == 2 ? rgb565(133, 84, 61) : rgb565(230, 184, 143);
+  uint16_t crease = farmerCharacter == 2 ? rgb565(103, 62, 43) : rgb565(206, 156, 116);
+  game.fillRoundRect(hx - 4, hy - 4, 8, 8, 2, skin);            // fist
+  for (int f = 0; f < 4; ++f)                                   // fingers
+    game.drawFastHLine(hx - 3 + f * 2, hy - 3 + (f % 2), 2, crease);
+  game.fillCircle(hx + dir * 4, hy - 1, 2, skin);               // thumb wrap
+  game.drawFastHLine(hx - 3, hy + 2, 6, crease);                // fold line
+}
+
+// A cannabis bud: tapered stack of calyxes with sugar leaves and orange
+// pistils, drawn tip-up with the base centre at (bx, by).
+void drawBud(int bx, int by, float s) {
+  uint16_t dark = rgb565(74, 105, 52);
+  uint16_t mid = rgb565(105, 143, 75);
+  uint16_t light = rgb565(133, 163, 88);
+  uint16_t hair = rgb565(206, 124, 58);
+  game.fillCircle(bx, by + int(2 * s), int(5 * s), dark);       // base calyx
+  game.fillCircle(bx - int(2 * s), by - int(1 * s), int(4 * s), mid);
+  game.fillCircle(bx + int(2 * s), by - int(1 * s), int(4 * s), dark);
+  game.fillCircle(bx, by - int(3 * s), int(4 * s), mid);
+  game.fillCircle(bx - int(1 * s), by - int(5 * s), int(2 * s), light);
+  game.fillCircle(bx + int(2 * s), by - int(5 * s), int(2 * s), mid);
+  drawFanLeaf(bx + int(3 * s), by - int(7 * s), 0.06f, 24);     // sugar leaf
+  for (int i = 0; i < 5; ++i) {                                 // pistils
+    int px = bx + ((i * 5) % 7) - 3;
+    int py = by - int(2 * s) + (i % 3) - 1;
+    game.drawPixel(px, py, hair);
+    game.drawPixel(px + 1, py - 1, hair);
+  }
+}
+
+// A slim grower figure with one arm reaching to (handX, handY) — the grower
+// does the cutting / trimming / washing in the cutscenes instead of a
+// disembodied hand. The arm bends at an elbow and ends in a gripping hand.
+void drawGrowerWorker(int cx, int footY, int handX, int handY) {
+  uint16_t shirt = rgb565(39, 132, 71);
+  uint16_t pants = rgb565(22, 23, 26);
+  const int torsoW = 28, torsoH = 34;
+  game.fillRect(cx - 9, footY - 16, 6, 16, pants);
+  game.fillRect(cx + 3, footY - 16, 6, 16, pants);
+  game.fillRoundRect(cx - torsoW / 2, footY - 16 - torsoH, torsoW, torsoH, 6, shirt);
+  int sx = handX >= cx ? cx + torsoW / 2 - 3 : cx - torsoW / 2 + 3;
+  int sy = footY - 16 - torsoH + 7;
+  int mx = (sx + handX) / 2, my = (sy + handY) / 2 + 5;   // slight elbow bend
+  game.drawLine(sx, sy, mx, my, shirt);
+  game.drawLine(sx, sy + 1, mx, my + 1, shirt);
+  game.drawLine(mx, my, handX, handY, shirt);
+  game.drawLine(mx, my + 1, handX, handY + 1, shirt);
+  drawGrippingHand(handX, handY, handX >= cx ? 1 : -1);
+  drawFarmerHeadLarge(cx, footY - 16 - torsoH, farmerCharacter);
+}
+
 void drawFlowerHarvestFrame(int frame) {
   game.fillRect(0, HEADER_H, SCREEN_W, NAV_Y - HEADER_H, BG);
   game.fillRoundRect(13, 38, 294, 158, 10, PANEL);
@@ -5469,24 +5367,29 @@ void drawFlowerHarvestFrame(int frame) {
     drawFanLeaf(x - 11, top + 23, 0.22f, -28);
     drawFanLeaf(x + 12, top + 29, 0.22f, 28);
     drawFanLeaf(x, top + 13, 0.28f, 0);
+    drawBud(x, top + 19, 1.0f);   // a real flower on every standing plant
     game.fillRoundRect(x - 12, 158, 24, 9, 3, rgb565(91, 49, 33));
   }
+  for (int i = 0; i < min(frame, 4); ++i) {   // fresh-cut stumps remain
+    game.drawFastVLine(plantX[i], 138, 20, rgb565(35, 104, 48));
+    game.drawFastHLine(plantX[i] - 3, 137, 7, rgb565(96, 136, 72));
+  }
 
-  // A small pair of shears crosses the next stem as the harvest basket fills.
+  // The grower works his way down the row, shears in hand.
   int cutX = plantX[min(frame, 3)];
   game.drawCircle(cutX - 5, 145, 5, rgb565(185, 195, 196));
   game.drawCircle(cutX + 5, 145, 5, rgb565(185, 195, 196));
   game.drawLine(cutX - 2, 142, cutX + 14, 132, rgb565(208, 218, 218));
   game.drawLine(cutX + 2, 142, cutX - 13, 132, rgb565(208, 218, 218));
+  drawGrowerWorker(max(44, cutX - 30), 178, cutX + 5, 144);
 
   game.fillRoundRect(232, 130, 47, 39, 6, rgb565(117, 70, 43));
   game.drawRoundRect(232, 130, 47, 39, 6, rgb565(193, 139, 83));
   game.drawFastHLine(238, 137, 35, rgb565(219, 164, 103));
-  for (int i = 0; i < frame; ++i) {
-    int bx = 240 + (i % 3) * 11;
-    int by = 129 + (i / 3) * 8;
-    game.fillCircle(bx, by, 4, rgb565(122, 151, 82));
-    game.fillCircle(bx + 2, by - 2, 2, rgb565(178, 193, 118));
+  for (int i = 0; i < min(frame, 6); ++i) {
+    int bx = 243 + (i % 3) * 12;
+    int by = 150 + (i / 3) * 11;
+    drawBud(bx, by, 0.9f);   // real buds piling into the basket
   }
   game.setTextColor(GOLD, PANEL);
   if (frame >= 5) {
@@ -5590,25 +5493,22 @@ void drawFlowerTrimFrame(int frame) {
   game.drawCentreString("TRIMMING ROOM", 160, 46, 2);
   game.fillRoundRect(35, 147, 250, 20, 5, rgb565(113, 73, 48));
   game.drawFastHLine(42, 149, 236, rgb565(188, 139, 88));
+  // The grower stands at the table (drawn behind it) and trims by hand.
+  int shearX = 90 + frame * 20;
+  drawGrowerWorker(shearX + 58, 178, shearX + 5, 114);
 
   // Flower clusters gather on the work surface as the shears move across.
   int clusterCount = 1 + frame;
   for (int i = 0; i < clusterCount; ++i) {
     int x = 74 + (i % 5) * 35;
     int y = 138 - (i / 5) * 12 - (i % 2) * 3;
-    game.fillCircle(x, y, 7, rgb565(105, 143, 75));
-    game.fillCircle(x - 3, y - 2, 4, rgb565(133, 163, 88));
-    game.fillCircle(x + 3, y + 1, 4, rgb565(146, 171, 94));
-    game.drawPixel(x, y - 3, rgb565(192, 199, 131));
+    drawBud(x, y + 8, 1.1f);   // real buds piled on the work surface
   }
 
-  int shearX = 90 + frame * 20;
   game.drawCircle(shearX - 5, 116, 5, rgb565(185, 195, 196));
   game.drawCircle(shearX + 5, 116, 5, rgb565(185, 195, 196));
   game.drawLine(shearX - 2, 113, shearX + 15, 99, rgb565(208, 218, 218));
   game.drawLine(shearX + 2, 113, shearX - 14, 99, rgb565(208, 218, 218));
-  game.drawLine(285, 96, shearX + 8, 113, rgb565(230, 184, 143));
-  game.fillCircle(shearX + 8, 113, 3, rgb565(230, 184, 143));
 
   for (int i = 0; i < frame; ++i) {
     int leafX = 55 + ((i * 31 + frame * 9) % 206);
@@ -6080,19 +5980,19 @@ void handleTouch(int x, int y) {
       break;
     case OPTIONS:
       // Big-card grid: each card is its own tap target, anywhere on the card.
-      if (y >= 64 && y < 106 && x < 160) {
+      if (y >= 70 && y < 110 && x < 160) {
         gameSpeed = (gameSpeed + 1) % 3;   // RELAXED -> QUICK -> EXTREME
         lastGameTick = millis();
         saveGame();
-      } else if (y >= 64 && y < 106) {
+      } else if (y >= 70 && y < 110) {
         // Volume steps: OFF -> 10 -> 20 -> ... -> 100 -> OFF
         musicVolume = musicVolume == 0 ? 10 : musicVolume >= 100 ? 0 : musicVolume + 10;
         if (musicVolume) startSong(backgroundSong);
         else { chipToneOff(); drumToneOff(); activeSong = nullptr; drumPlaying = false; }
         saveGame();
-      } else if (y >= 110 && y < 152 && x < 160) {
+      } else if (y >= 114 && y < 154 && x < 160) {
         prepareDemoHarvest();
-      } else if (y >= 110 && y < 152) {
+      } else if (y >= 114 && y < 154) {
         page = CHEAT_CODE;               // cheat console
         cheatEdit[0] = '\0';
         cheatFeedback[0] = '\0';
@@ -6903,12 +6803,6 @@ void loadTouchCalibration() {
   }
 }
 
-void saveTouchCalibration() {
-  preferences.putShort("tcXMin", touchRawXMin);
-  preferences.putShort("tcXMax", touchRawXMax);
-  preferences.putShort("tcYMin", touchRawYMin);
-  preferences.putShort("tcYMax", touchRawYMax);
-}
 
 // Converts the current touch to screen coordinates using the calibration.
 void readTouch(int &x, int &y) {
@@ -6924,79 +6818,10 @@ void readTouch(int &x, int &y) {
 #endif
 }
 
-bool calibrationTouchDown() {
-  return touchscreen.tirqTouched() && touchscreen.touched();
-}
 
 // Waits for one tap and returns the averaged raw reading.
-TS_Point sampleCalibrationTap() {
-  while (calibrationTouchDown()) delay(12);
-  delay(150);
-  long sx = 0, sy = 0;
-  int n = 0;
-  while (n < 16) {
-    if (calibrationTouchDown()) {
-      TS_Point p = touchscreen.getPoint();
-      if (p.z > 300) { sx += p.x; sy += p.y; ++n; }
-    }
-    delay(10);
-  }
-  while (calibrationTouchDown()) delay(12);
-  TS_Point avg;
-  avg.x = sx / n;
-  avg.y = sy / n;
-  avg.z = 0;
-  return avg;
-}
 
-void drawCalibrationTarget(int x, int y, int step) {
-  game.fillScreen(BG);
-  game.setTextColor(TEXT_MAIN, BG);
-  game.drawCentreString("TOUCH CALIBRATION", 160, 90, 2);
-  char msg[24];
-  snprintf(msg, sizeof(msg), "Tap the cross  %d/4", step);
-  game.setTextColor(TEXT_DIM, BG);
-  game.drawCentreString(msg, 160, 116, 1);
-  game.drawFastHLine(x - 10, y, 21, GOLD);
-  game.drawFastVLine(x, y - 10, 21, GOLD);
-  game.drawCircle(x, y, 6, GOLD);
-  presentFrame();
-}
 
-void runTouchCalibration() {
-  const int M = 20;  // crosshair inset from the edges
-  const int px[4] = {M, SCREEN_W - 1 - M, SCREEN_W - 1 - M, M};
-  const int py[4] = {M, M, SCREEN_H - 1 - M, SCREEN_H - 1 - M};
-  TS_Point r[4];
-  for (int i = 0; i < 4; ++i) {
-    drawCalibrationTarget(px[i], py[i], i + 1);
-    r[i] = sampleCalibrationTap();
-    Serial.printf("cal %d: raw x=%d y=%d\n", i + 1, r[i].x, r[i].y);
-  }
-
-  // Average the left/right and top/bottom pairs, then extend to the screen edges.
-  float rxL = (r[0].x + r[3].x) / 2.0f, rxR = (r[1].x + r[2].x) / 2.0f;
-  float ryT = (r[0].y + r[1].y) / 2.0f, ryB = (r[2].y + r[3].y) / 2.0f;
-  float perPxX = (rxR - rxL) / (float)(SCREEN_W - 1 - 2 * M);
-  float perPxY = (ryB - ryT) / (float)(SCREEN_H - 1 - 2 * M);
-  int xMin = (int)(rxL - perPxX * M), xMax = (int)(rxR + perPxX * M);
-  int yMin = (int)(ryT - perPxY * M), yMax = (int)(ryB + perPxY * M);
-
-  game.fillScreen(BG);
-  if (abs(xMax - xMin) < 1000 || abs(yMax - yMin) < 1000) {
-    game.setTextColor(RED, BG);
-    game.drawCentreString("Calibration failed - kept old values", 160, 112, 1);
-  } else {
-    touchRawXMin = xMin; touchRawXMax = xMax;
-    touchRawYMin = yMin; touchRawYMax = yMax;
-    saveTouchCalibration();
-    game.setTextColor(ACCENT, BG);
-    game.drawCentreString("Touch calibrated", 160, 112, 2);
-  }
-  Serial.printf("touch cal: X %d..%d  Y %d..%d\n", touchRawXMin, touchRawXMax, touchRawYMin, touchRawYMax);
-  presentFrame();
-  delay(900);
-}
 
 void setup() {
   pinMode(TFT_BL, OUTPUT);
@@ -7013,7 +6838,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: death alert cleanup\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: options card spacing\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
