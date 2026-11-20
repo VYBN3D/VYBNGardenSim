@@ -4740,69 +4740,7 @@ void drawSmokeCutsceneFrame(int frame) {
   game.drawCentreString(frame >= 3 ? "GARDEN GLOW ACTIVATED" : "A LITTLE ROOM BOOST", 160, 176, 1);
 }
 
-// Optional SD art for the gown-up intro. Two naming schemes, tried in order:
-//   /GOWN<c><f>.BMP — per-character (e.g. GOWN14.BMP = Mathias, frame 4)
-//   /GOWN<f>.BMP    — one generic set for any character
-// All files: 320x240, 24-bit BMP. Falls back to the built-in vector scene.
-// Memory-friendly: rows stream through a small heap buffer, no framebuffer.
-bool tryDrawGownBmp(const char *filename) {
-  switchToSdBus();
-  File file = SD.open(filename, FILE_READ);
-  bool drawn = false;
-  if (file) {
-    file.seek(10);
-    uint32_t pixelOffset = readLE32(file);
-    file.seek(18);
-    int32_t width = (int32_t)readLE32(file);
-    int32_t height = (int32_t)readLE32(file);
-    file.seek(28);
-    uint16_t bitsPerPixel = readLE16(file);
-    uint32_t compression = readLE32(file);
-    if (width == SCREEN_W && abs(height) == SCREEN_H &&
-        bitsPerPixel == 24 && compression == 0) {
-      uint8_t *row = (uint8_t *)malloc((SCREEN_W * 3 + 3) & ~3UL);
-      if (row) {
-        uint32_t rowBytes = (SCREEN_W * 3 + 3) & ~3UL;
-        bool oldSwap = game.getSwapBytes();
-        game.setSwapBytes(true);
-        file.seek(pixelOffset);
-        drawn = true;
-        for (int r = 0; r < SCREEN_H && drawn; ++r) {
-          if (file.read(row, rowBytes) != rowBytes) {
-            drawn = false;
-            break;
-          }
-          for (int x = 0; x < SCREEN_W; ++x) {
-            rgbRow[x] = rgb565(row[x * 3 + 2], row[x * 3 + 1], row[x * 3 + 0]);
-          }
-          int screenY = height > 0 ? (SCREEN_H - 1 - r) : r;
-          // Scale the full-width BMP row onto the panel (x1.5, y 4/3).
-          for (int x = 0; x < SCREEN_W; ++x) {
-            int px0 = SX(x), px1 = SX(x + 1);
-            for (int px = px0; px < px1; ++px) panelRow[px] = rgbRow[x];
-          }
-          int py0 = SY(screenY), py1 = SY(screenY + 1);
-          for (int py = py0; py < py1; ++py)
-            blitPanelRow(0, py, PANEL_W, panelRow);
-        }
-        game.setSwapBytes(oldSwap);
-        free(row);
-      }
-    }
-    file.close();
-  }
-  switchToTouchBus();
-  return drawn;
-}
 
-bool drawGownUpBmpFrame(int frame) {
-  if (!sdMounted) return false;
-  char filename[16];
-  snprintf(filename, sizeof(filename), "/GOWN%d%d.BMP", farmerCharacter, frame);
-  if (tryDrawGownBmp(filename)) return true;
-  snprintf(filename, sizeof(filename), "/GOWN%d.BMP", frame);
-  return tryDrawGownBmp(filename);
-}
 
 // Scaled copy of drawFarmerHeadLarge for the intro close-up (scale 1 = normal).
 void drawFarmerHeadScaled(int cx, int cy, uint8_t character, int s) {
@@ -5007,7 +4945,6 @@ void drawFarmerHeadScaled(int cx, int cy, uint8_t character, int s) {
 }
 
 void drawGownUpCutsceneFrame(int frame) {
-  if (drawGownUpBmpFrame(frame)) return;  // SD art overrides the vector scene
   bool bearded = farmerCharacter == 0 || farmerCharacter == 2 || farmerCharacter == 5 ||
                   farmerCharacter == 6 || farmerCharacter == 9;
   // Only the opening frame gets text; the rest of the tour speaks for itself.
@@ -5155,8 +5092,17 @@ void drawGownUpCutsceneFrame(int frame) {
   }
 }
 
+// Bare cutscene chrome matching the SD intro art: an empty header bar with
+// no wordmark, grower name, money or status text.
+void beginBareHeaderScene() {
+  game.fillScreen(BG);
+  game.fillRect(0, 0, SCREEN_W, HEADER_H, 0x0861);
+  game.drawFastHLine(0, HEADER_H - 1, SCREEN_W, 0x4D89);
+  presentFrame();
+}
+
 void animateGownUpCutscene() {
-  beginCutsceneScene();
+  beginBareHeaderScene();
   for (int frame = 0; frame < 8; ++frame) {
     drawGownUpCutsceneFrame(frame);
     presentFrame();
