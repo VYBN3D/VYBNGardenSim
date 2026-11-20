@@ -982,6 +982,24 @@ void drawVybnMark(int x, int y, int scale, uint16_t color) {
   }
 }
 
+// Header corner logo: the 48x48 script mark downsampled to 24x24 (each
+// header pixel covers a 2x2 block of the splash mark) so the full logo fits
+// the 28 px header bar without shrinking to just the eye.
+void drawVybnScriptCorner(int x, int y, uint16_t color) {
+  for (int r = 0; r < 24; ++r) {
+    for (int c = 0; c < 24; ++c) {
+      bool hit = false;
+      for (int rr = 0; rr < 2 && !hit; ++rr)
+        for (int cc = 0; cc < 2 && !hit; ++cc) {
+          int bitIndex = (r * 2 + rr) * 48 + (c * 2 + cc);
+          uint8_t packed = pgm_read_byte(&vybnScriptMask[bitIndex >> 3]);
+          if (packed & (0x80 >> (bitIndex & 7))) hit = true;
+        }
+      if (hit) game.fillRect(x + c, y + r, 1, 1, color);
+    }
+  }
+}
+
 // Chest print: the whole script wordmark, scale 1, on the grower outfits.
 void drawVybnShirt(int x, int y, uint16_t color) {
   for (int row = 0; row < 28; ++row) {
@@ -2107,11 +2125,7 @@ void drawBatteryStatus(int x, int cy) {
 void drawHeader() {
   game.fillRect(0, 0, SCREEN_W, HEADER_H, 0x0861);
   game.drawFastHLine(0, HEADER_H - 1, SCREEN_W, 0x4D89);
-  drawVybnMark(7, 2, 1, TFT_WHITE);
-  game.setTextColor(TEXT_MAIN, 0x0861);
-  game.drawString("VYBN", 35, 4, 2);
-  game.setTextColor(TEXT_DIM, 0x0861);
-  game.drawString(growerName, 36, 18, 1);
+  drawVybnScriptCorner(6, 2, TFT_WHITE);
 
   char money[14];
   snprintf(money, sizeof(money), "$%u", credits);

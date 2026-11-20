@@ -18,6 +18,9 @@ boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 - Power popup no longer sleeps on the click that opened it: the popup
   waits for the BOOT button to be released before timing presses, so a
   single click always shows the quick-press/hold options
+- Header: the full script logo now sits in the left corner (the 48x48
+  splash mark downsampled to 24x24); the glitchy eye mark, the VYBN
+  wordmark text and the grower name are gone
 - Waking from sleep mode restarts the garden theme: the popup had killed
   the PCM theme stream and the wake path never restarted it, so the
   garden sometimes stayed silent until the next bong hit
