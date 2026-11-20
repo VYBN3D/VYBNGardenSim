@@ -4776,16 +4776,16 @@ void drawFarmerInspector(int pose) {
   // stats panel, as if he walked out from behind it.
   const int cx = page == PLANT_VIEW ? 274 : 152;
   const int footY = page == PLANT_VIEW ? 207 : 168;
-  int torsoW = farmerCharacter == 4 ? 46 : 36;
+  int torsoW = farmerCharacter == 4 ? 34 : 28;
   int torsoH = farmerCharacter == 4 ? 36 : 41;
-  game.fillRect(cx - 10, footY - 18, 7, 18, pants);
-  game.fillRect(cx + 3, footY - 18, 7, 18, pants);
+  game.fillRect(cx - 9, footY - 18, 6, 18, pants);
+  game.fillRect(cx + 3, footY - 18, 6, 18, pants);
   game.fillRoundRect(cx - torsoW / 2, footY - 18 - torsoH, torsoW, torsoH, 6, shirt);
-  game.fillRoundRect(cx - torsoW / 2 - 5, footY - 18 - torsoH + 5, 8, torsoH - 8, 3, shirt);
-  game.fillRoundRect(cx + torsoW / 2 - 3, footY - 18 - torsoH + 5, 8, torsoH - 8, 3, shirt);
+  game.fillRoundRect(cx - torsoW / 2 - 4, footY - 18 - torsoH + 5, 6, torsoH - 8, 3, shirt);
+  game.fillRoundRect(cx + torsoW / 2 - 2, footY - 18 - torsoH + 5, 6, torsoH - 8, 3, shirt);
   drawCuraleafLogo(cx - 12, footY - 18 - torsoH + 3, 1, TFT_WHITE);
-  game.drawLine(cx - torsoW / 2 - 2, footY - 31, cx - torsoW / 2 + 1, footY - 24, skin);
-  game.drawLine(cx + torsoW / 2 + 2, footY - 31, cx + torsoW / 2 - 1, footY - 24, skin);
+  game.drawLine(cx - torsoW / 2 - 3, footY - 31, cx - torsoW / 2, footY - 24, skin);
+  game.drawLine(cx + torsoW / 2 + 1, footY - 31, cx + torsoW / 2 - 2, footY - 24, skin);
   drawFarmerHeadLarge(cx, footY - 59, farmerCharacter);
 }
 
@@ -5354,9 +5354,9 @@ void drawGownUpCutsceneFrame(int frame) {
     }
     cx = 160;
     footY = 174;
-    game.fillRoundRect(cx - 14, footY - 2, 30, 3, 1, rgb565(30, 38, 34));
-    game.fillRect(cx - 12, footY - 22, 8, 22, pants);
-    game.fillRect(cx + 4, footY - 22, 8, 22, pants);
+    game.fillRoundRect(cx - 11, footY - 2, 22, 3, 1, rgb565(30, 38, 34));
+    game.fillRect(cx - 10, footY - 22, 6, 22, pants);
+    game.fillRect(cx + 4, footY - 22, 6, 22, pants);
     cy = footY - 78;
   } else if (frame == 6) {
     // ---- Walking down the hallway toward the grow-room door ----
@@ -5379,9 +5379,9 @@ void drawGownUpCutsceneFrame(int frame) {
 
     cx = 196;
     footY = 173;  // mid-stride bob
-    game.fillRoundRect(cx - 14, footY - 2, 30, 3, 1, rgb565(30, 38, 34));
-    game.fillRect(cx - 12, footY - 20, 7, 18, pants);  // stride legs
-    game.fillRect(cx + 5, footY - 22, 8, 22, pants);
+    game.fillRoundRect(cx - 11, footY - 2, 22, 3, 1, rgb565(30, 38, 34));
+    game.fillRect(cx - 11, footY - 20, 6, 18, pants);  // stride legs
+    game.fillRect(cx + 5, footY - 22, 6, 22, pants);
     for (int i = 0; i < 3; ++i)  // motion dashes behind the farmer
       game.drawFastHLine(cx - 26 - i * 6, footY - 14 - i * 6, 6,
                            rgb565(120, 140, 130));
@@ -5421,15 +5421,15 @@ void drawGownUpCutsceneFrame(int frame) {
 
     cx = 160;
     footY = 202;
-    game.fillRoundRect(cx - 14, footY - 2, 30, 3, 1, rgb565(26, 40, 32));
-    game.fillRect(cx - 12, footY - 22, 8, 22, pants);
-    game.fillRect(cx + 4, footY - 22, 8, 22, pants);
+    game.fillRoundRect(cx - 11, footY - 2, 22, 3, 1, rgb565(26, 40, 32));
+    game.fillRect(cx - 10, footY - 22, 6, 22, pants);
+    game.fillRect(cx + 4, footY - 22, 6, 22, pants);
     cy = footY - 78;
   }
 
-  game.fillRoundRect(cx - 18, footY - 62, 36, 42, 8, shirt);
-  game.fillRoundRect(cx - 23, footY - 55, 8, 32, 4, shirt);
-  game.fillRoundRect(cx + 15, footY - 55, 8, 32, 4, shirt);
+  game.fillRoundRect(cx - 14, footY - 62, 28, 42, 7, shirt);
+  game.fillRoundRect(cx - 19, footY - 55, 6, 32, 3, shirt);
+  game.fillRoundRect(cx + 13, footY - 55, 6, 32, 3, shirt);
   drawCuraleafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
   drawFarmerHeadLarge(cx, cy, farmerCharacter);
 
