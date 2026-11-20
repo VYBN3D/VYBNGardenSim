@@ -5,6 +5,12 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/VYBNGardenSim/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v43 — Header branding
+- The left corner of the header is plain text: big "VYBN" with small
+  "GARDEN SIM" underneath it, in place of the old grower name. No logo
+  mark of any kind.
+- Removes the downsampled script-logo experiment from v42
+
 ## v42 — Reference-style colas, harvest fix, sleep audio fix
 - Mature plants redesigned around the Weed Farmer reference: a fat spear
   main cola (4 stacked buds) runs up the stem tip, every branch offshoot
