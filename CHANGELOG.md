@@ -5,6 +5,23 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v31 — Flicker-free frame buffer + smoke break on stash
+- **Flicker-free rendering**: the game now draws every page into a full-size
+  PSRAM frame buffer and pushes it to the panel in one atomic pass — no more
+  visible mid-draw tearing anywhere (garden, cutscenes, modals, SD art)
+- Transient overlays (farmer visit, nearby popup, death modal) are stamped
+  into the buffer before the push, so they no longer blink on full repaints
+- **Keyboard flicker fix**: typing on the grower-name, WiFi-password,
+  cheat-code, message and send-money keyboards now repaints only the input
+  field — the page stops flashing on every key press
+- **Smoke break moved to the stash page**: new big SMOKE BREAK button opens a
+  chooser (BONG + FLOWER + LIGHTER / BONG + HASH / PAPERS + FLOWER + LIGHTER)
+  with an ARE YOU SURE? confirm; the three smoke buttons are gone from the
+  market, leaving room for bigger cards
+- Market: SELL/GEAR toggles enlarged to big buttons and the buy/sell cards
+  moved to the full-width two-row grid
+- Benji's beard trimmed to a short stubbly patch (SD art updated too)
+
 ## v30 — Benji v2 + Ray-Bans
 - Benji redrawn for clarity: individual alternating light/dark dread
   strands framing the face instead of solid side walls, tighter dread

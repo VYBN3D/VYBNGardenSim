@@ -273,6 +273,8 @@ bool farmerOverlayActive = false;       // non-blocking farmer visit overlay
 unsigned long farmerOverlayUntil = 0;
 bool overlayDirty = false;              // garden repaint landed under the overlay
 TFT_eSprite overlaySpr = TFT_eSprite(&canvas);  // atomic pop-out blit buffer
+TFT_eSprite frameBuf = TFT_eSprite(&canvas);    // full-frame render buffer
+bool frameBufferActive = false;                 // presentFrame pushes the buffer
 bool smokeAnimationRequested = false;
 bool hashAnimationRequested = false;
 bool flowerHarvestAnimationRequested = false;
@@ -376,6 +378,7 @@ uint8_t nearbyMode = 0; // 0 list, 1 compose, 2 gift, 3 inbox, 4 cash
 char outgoingMessage[28] = "";
 char outgoingCash[6] = "";      // money amount being typed (digits only)
 uint8_t msgKbMode = 0;           // compose keyboard: 0 lower, 1 upper, 2 symbols
+bool fieldOnlyRedraw = false;    // a tap refreshed just the input field
 uint8_t nameKbMode = 0;          // name-edit keyboard: 0 lower, 1 upper, 2 symbols
 char lastNearbyMessage[52] = "No messages yet";
 unsigned long lastNearbyHello = 0;
@@ -411,7 +414,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v30"
+#define FW_VERSION "v31"
 #define FW_BOARD    "S28"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -559,6 +562,13 @@ struct GameCanvas {
   }
 };
 GameCanvas game = { &canvas };
+
+// Panel-resolution row blit used by the SD BMP loaders: writes into the
+// frame buffer when it is active, straight to the panel otherwise.
+void blitPanelRow(int px, int py, int w, uint16_t *row) {
+  if (frameBufferActive) frameBuf.pushImage(px, py, w, 1, row);
+  else canvas.pushImage(px, py, w, 1, row);
+}
 
 // --- Sound output: onboard ES8311 codec + FM8002E speaker amp ----------------
 // ESP32-S3 I2S master -> ES8311 codec (I2C 0x18, shared touch bus) -> analog
@@ -876,6 +886,9 @@ uint8_t marketSellMode = 0;     // 0 none, 1/2 flower sell-1/sell-all, 3/4 hash
 uint8_t marketSellCount = 0;    // stocked strains for the active mode
 uint8_t marketSellList[STRAIN_COUNT];
 bool marketSellConfirm = false; // one-tap ARE YOU SURE? before selling
+bool smokeMenuOpen = false;     // stash page smoke-break chooser
+bool smokeMenuConfirm = false;  // ARE YOU SURE? before lighting up
+uint8_t smokeMenuPick = 0;      // 1 bong+flower, 2 bong+hash, 3 joint
 
 uint16_t totalSeeds() {
   uint16_t t = 0;
@@ -1590,8 +1603,13 @@ void serviceNearby() {
   }
   if (page == NEARBY) {
     // Targeted refresh only: keep the header, buttons and layout untouched.
-    if (nearbyMode == 0) drawNearbyPeerListOnly();
-    else if (nearbyMode == 3) drawNearbyInboxTextOnly();
+    if (nearbyMode == 0) {
+      drawNearbyPeerListOnly();
+      presentFrame();
+    } else if (nearbyMode == 3) {
+      drawNearbyInboxTextOnly();
+      presentFrame();
+    }
     return;
   }
   // Popup only for real events: a message or a supply delivery. HELLO
@@ -1609,6 +1627,7 @@ void serviceNearby() {
   nearbyPopupUntil = millis() + 12000UL;
   nearbyPopupActive = true;
   drawNearbyPopup();
+  presentWithOverlays();
 }
 
 void sendNearbyHelloNow() {
@@ -1705,7 +1724,9 @@ void drawFarmerAvatar() {
     game.fillRoundRect(302, 10, 5, 4, 1, TFT_BLACK);
     game.drawFastHLine(300, 12, 2, TFT_BLACK);
     game.drawFastHLine(297, 15, 8, rgb565(66, 46, 32));
-    game.fillRoundRect(298, 17, 7, 4, 2, rgb565(66, 46, 32));
+    game.fillRoundRect(299, 18, 5, 2, 1, rgb565(66, 46, 32));
+    game.drawPixel(298, 17, rgb565(66, 46, 32));
+    game.drawPixel(304, 17, rgb565(66, 46, 32));
   } else {
     game.fillRoundRect(293, 4, 16, 20, 7, hair);
     game.fillCircle(301, 13, 6, skin);
@@ -1850,7 +1871,9 @@ void drawFarmerHeadLarge(int cx, int cy, uint8_t character) {
     // Mustache and chin patch — the bandana stays home.
     game.fillRoundRect(cx - 7, cy + 4, 14, 4, 2, bBeard);
     game.fillRect(cx - 1, cy + 4, 2, 2, skin);
-    game.fillRoundRect(cx - 3, cy + 7, 7, 6, 2, bBeard);
+    game.fillRect(cx - 3, cy + 8, 7, 3, bBeard);              // short stubble patch
+    for (int i = -2; i <= 2; i += 2)                          // stubble specks
+      game.drawPixel(cx + i, cy + 7, bBeard);
     return;
   }
 
@@ -2251,7 +2274,7 @@ bool drawPlantBitmap() {
         }
         int py0 = SY(HEADER_H + screenY), py1 = SY(HEADER_H + screenY + 1);
         for (int py = py0; py < py1; ++py)
-          canvas.pushImage(0, py, SX(ART_W), 1, panelRow);
+          blitPanelRow(0, py, SX(ART_W), panelRow);
       }
       game.setSwapBytes(oldSwap);
     }
@@ -2305,8 +2328,8 @@ bool drawPlantBitmapFullScreenRegion(int xStart, int yStart, int xEnd, int yEnd)
         int y1 = ((screenY + 1) * SCREEN_H) / ART_H;
         for (int y = y0; y < y1; ++y) {
           if (y >= yStart && y < yEnd) {
-            canvas.pushImage(SX(xStart), SY(y), SWD(xStart, xEnd - xStart), 1,
-                             &scaledPlantRow[SX(xStart)]);
+            blitPanelRow(SX(xStart), SY(y), SWD(xStart, xEnd - xStart),
+                         &scaledPlantRow[SX(xStart)]);
           }
         }
       }
@@ -2798,9 +2821,9 @@ void drawMarketCard(int x, int y, const char *label, const char *value, bool ena
 }
 
 void drawMarketPage() {
-  drawPageTitle("VIRTUAL MARKET", marketGearMode ? "Bong = flower/hash | Joint = flower + lighter + papers" : "Tap a sell card, pick a strain, then confirm");
-  drawButton(12, 72, 144, 19, "SELL", marketGearMode ? PANEL_LIGHT : ACCENT_DARK);
-  drawButton(164, 72, 144, 19, "GEAR", marketGearMode ? ACCENT_DARK : PANEL_LIGHT);
+  drawPageTitle("VIRTUAL MARKET", marketGearMode ? "Buy gear - smoke break is on the stash page" : "Tap a sell card, pick a strain, then confirm");
+  drawButton(12, 70, 144, 28, "SELL", marketGearMode ? PANEL_LIGHT : ACCENT_DARK);
+  drawButton(164, 70, 144, 28, "GEAR", marketGearMode ? ACCENT_DARK : PANEL_LIGHT);
   char units[24];
   if (!marketGearMode) {
     // Sell cards open a strain submenu (big tappable rows); the submenu asks
@@ -2808,34 +2831,26 @@ void drawMarketPage() {
     char flowerPrice[24];
     stashPriceText(flowerPrice, sizeof(flowerPrice));
     snprintf(units, sizeof(units), "x%u - %s", stashTotal(), flowerPrice);
-    drawMarketCard(5, 94, "SELL 1 FLOWER", units, stashTotal() > 0);
+    drawMarketCard(5, 102, "SELL 1 FLOWER", units, stashTotal() > 0);
     snprintf(units, sizeof(units), "x%u - %s", stashTotal(), flowerPrice);
-    drawMarketCard(163, 94, "SELL ALL FLOWER", units, stashTotal() > 0);
+    drawMarketCard(163, 102, "SELL ALL FLOWER", units, stashTotal() > 0);
     char hashPrice[24];
     hashPriceText(hashPrice, sizeof(hashPrice));
     snprintf(units, sizeof(units), "x%u - %s", hashTotal(), hashPrice);
-    drawMarketCard(5, 136, "SELL 1 HASH", units, hashRoomUnlocked && hashTotal() > 0);
+    drawMarketCard(5, 144, "SELL 1 HASH", units, hashRoomUnlocked && hashTotal() > 0);
     snprintf(units, sizeof(units), "x%u - %s", hashTotal(), hashPrice);
-    drawMarketCard(163, 136, "SELL ALL HASH", units, hashRoomUnlocked && hashTotal() > 0);
+    drawMarketCard(163, 144, "SELL ALL HASH", units, hashRoomUnlocked && hashTotal() > 0);
     if (marketSellMode) drawSellStrainModal();
     return;
   }
 
-  drawMarketCard(5, 94, "BONG", bongs ? "x1 OWNED" : "$24", !bongs && credits >= 24);
+  drawMarketCard(5, 102, "BONG", bongs ? "x1 OWNED" : "$24", !bongs && credits >= 24);
   snprintf(units, sizeof(units), "x%u owned - $6", lighters);
-  drawMarketCard(163, 94, "LIGHTERS +3", units, credits >= 6);
+  drawMarketCard(163, 102, "LIGHTERS +3", units, credits >= 6);
   snprintf(units, sizeof(units), "x%u owned - $5", rollingPapers);
-  drawMarketCard(5, 136, "PAPERS +5", units, credits >= 5);
+  drawMarketCard(5, 144, "PAPERS +5", units, credits >= 5);
   snprintf(units, sizeof(units), "%u%%", stonedLevel);
-  drawMarketCard(163, 136, "HIGH METER", units, false);
-
-  bool gardenReady = true;  // smoke breaks only need gear + product
-  drawButton(13, 178, 94, 25, "BONG+FLOWER", gardenReady && bongs && stashTotal() ? ACCENT_DARK : PANEL_LIGHT,
-             gardenReady && bongs && stashTotal() ? TFT_WHITE : TEXT_DIM);
-  drawButton(113, 178, 94, 25, "BONG+HASH", gardenReady && bongs && hashTotal() ? ACCENT_DARK : PANEL_LIGHT,
-             gardenReady && bongs && hashTotal() ? TFT_WHITE : TEXT_DIM);
-  drawButton(213, 178, 94, 25, "JOINT+FLOWER", gardenReady && stashTotal() && lighters && rollingPapers ? ACCENT_DARK : PANEL_LIGHT,
-             gardenReady && stashTotal() && lighters && rollingPapers ? TFT_WHITE : TEXT_DIM);
+  drawMarketCard(163, 144, "HIGH METER", units, false);
 }
 
 void drawStashPage() {
@@ -2890,7 +2905,45 @@ void drawStashPage() {
     game.drawRightString(more, 302, 184, 1);
   }
   if (untrimmedUnits > 0) {
-    drawButton(92, 187, 136, 17, "TRIM FLOWERS", ACCENT_DARK);
+    drawButton(5, 184, 152, 20, "TRIM FLOWERS", ACCENT_DARK);
+  } else {
+    drawButton(5, 184, 152, 20, "TRIM FLOWERS", PANEL_LIGHT, TEXT_DIM);
+  }
+  drawButton(163, 184, 152, 20, "SMOKE BREAK", ACCENT_DARK);
+  if (smokeMenuOpen) drawSmokeBreakMenu();   // chooser covers the jar list
+}
+
+// Smoke-break chooser over the stash page: the three gear + product combos.
+void drawSmokeBreakMenu() {
+  game.fillRoundRect(5, 72, 310, 133, 8, PANEL);
+  game.drawRoundRect(5, 72, 310, 133, 8, PANEL_LIGHT);
+  drawButton(243, 74, 66, 20, "BACK", PANEL_LIGHT);
+  game.setTextColor(TEXT_MAIN, PANEL);
+  game.drawCentreString("SMOKE BREAK", 124, 77, 2);
+  const char *rows[3] = {"BONG + FLOWER + LIGHTER", "BONG + HASH", "PAPERS + FLOWER + LIGHTER"};
+  bool ready[3] = {(bool)(bongs && stashTotal()),
+                   (bool)(bongs && hashRoomUnlocked && hashTotal()),
+                   (bool)(stashTotal() && lighters && rollingPapers)};
+  if (smokeMenuConfirm) {
+    game.drawCentreString("ARE YOU SURE?", 160, 100, 2);
+    char detail[44];
+    if (smokeMenuPick == 1)
+      snprintf(detail, sizeof(detail), "Bong bowl of flower + 1 lighter");
+    else if (smokeMenuPick == 2)
+      snprintf(detail, sizeof(detail), "Bong bowl of hash");
+    else
+      snprintf(detail, sizeof(detail), "Rolled joint + lighter");
+    game.drawCentreString(detail, 160, 126, 1);
+    drawButton(5, 162, 150, 26, "BACK", PANEL_LIGHT);
+    drawButton(163, 162, 152, 26, "YES, SMOKE IT", RED, TFT_WHITE);
+    return;
+  }
+  for (uint8_t r = 0; r < 3; ++r) {
+    int y = 88 + r * 28;
+    game.fillRoundRect(11, y, 298, 26, 5, PANEL);
+    game.drawRoundRect(11, y, 298, 26, 5, ready[r] ? ACCENT : PANEL_LIGHT);
+    game.setTextColor(ready[r] ? TEXT_MAIN : TEXT_DIM, PANEL);
+    game.drawCentreString(rows[r], 160, y + 5, 1);
   }
 }
 
@@ -3208,6 +3261,37 @@ static void wifiScanStart() {
   WiFi.scanNetworks(true, false, false, 120U);   // async, keeps the UI alive
 }
 
+// Repaint only the keyboard's input field so a key press doesn't redraw
+// (and flicker) the whole page. Every keyboard shares this field geometry.
+static void refreshKeyboardField() {
+  game.fillRoundRect(14, 60, 292, 18, 4, PANEL);
+  game.setTextColor(TEXT_MAIN, PANEL);
+  if (page == WIFI_LOGIN) {
+    char dots[65];
+    size_t length = strlen(wifiPassEdit);
+    memset(dots, '*', length);
+    dots[length] = '\0';
+    game.drawString(dots, 21, 65, 1);
+  } else if (page == NAME_EDIT) {
+    game.drawString(growerNameEdit, 21, 65, 1);
+  } else if (page == CHEAT_CODE) {
+    game.drawString(cheatEdit, 21, 65, 1);
+  } else if (page == NEARBY && nearbyMode == 1) {
+    game.drawString(outgoingMessage, 21, 65, 1);
+  }
+  presentFrame();
+}
+
+// The send-money keypad's input box.
+static void refreshMoneyField() {
+  game.fillRoundRect(14, 82, 292, 22, 4, PANEL);
+  game.setTextColor(TEXT_MAIN, PANEL);
+  char amount[10];
+  snprintf(amount, sizeof(amount), "$%s", outgoingCash[0] ? outgoingCash : "0");
+  game.drawString(amount, 21, 88, 1);
+  presentFrame();
+}
+
 static void drawWifiLoginPage() {
   drawPageTitleSmall("WIFI LOGIN",
                 wifiLoginStage == 0 ? "Pick a network (* = saved)" : "Type the WiFi password");
@@ -3331,16 +3415,21 @@ static void touchWifiLogin(int x, int y) {
   if (key) {
     size_t length = strlen(wifiPassEdit);
     if (length < sizeof(wifiPassEdit) - 1) { wifiPassEdit[length] = key; wifiPassEdit[length + 1] = '\0'; }
-    render();
+    refreshKeyboardField();
+    fieldOnlyRedraw = true;
     return;
   }
   if (y >= 138 && y < 164 && x >= 263) {
     size_t length = strlen(wifiPassEdit);
     if (length) wifiPassEdit[length - 1] = '\0';
+    refreshKeyboardField();
+    fieldOnlyRedraw = true;
   } else if (y >= 168 && y < 196) {
     if (x < 104) {
       size_t length = strlen(wifiPassEdit);
       if (length > 0 && length < sizeof(wifiPassEdit) - 1) { wifiPassEdit[length] = ' '; wifiPassEdit[length + 1] = '\0'; }
+      refreshKeyboardField();
+      fieldOnlyRedraw = true;
     } else if (x < 216) {
       if (wifiSsidEdit[0]) {
         strlcpy(wifiSsid, wifiSsidEdit, sizeof(wifiSsid));
@@ -3466,12 +3555,15 @@ static void touchCheatPage(int x, int y) {
   if (key) {
     size_t length = strlen(cheatEdit);
     if (length < sizeof(cheatEdit) - 1) { cheatEdit[length] = key; cheatEdit[length + 1] = '\0'; }
-    render();
+    refreshKeyboardField();
+    fieldOnlyRedraw = true;
     return;
   }
   if (y >= 138 && y < 164 && x >= 263) {
     size_t length = strlen(cheatEdit);
     if (length) cheatEdit[length - 1] = '\0';
+    refreshKeyboardField();
+    fieldOnlyRedraw = true;
   } else if (y >= 168 && y < 196) {
     if (x < 104) {
       size_t length = strlen(cheatEdit);
@@ -3480,6 +3572,9 @@ static void touchCheatPage(int x, int y) {
         cheatEdit[length] = ' ';
         cheatEdit[length + 1] = '\0';
       }
+      refreshKeyboardField();
+      fieldOnlyRedraw = true;
+      return;
     } else if (x < 216) {
       if (cheatEdit[0]) {
         applyCheatCode();
@@ -3924,7 +4019,23 @@ void sendNearbyCash() {
 }
 
 void presentFrame() {
-  // Direct-to-TFT rendering is retained to avoid a full-screen heap buffer.
+  // One atomic panel write: pages draw into the PSRAM frame buffer and are
+  // pushed in a single pass, so nothing on screen ever flickers mid-draw.
+  if (frameBufferActive) frameBuf.pushSprite(0, 0);
+}
+
+// Push the frame with every transient overlay stamped on top: farmer visit,
+// nearby popup card and the death modal. Partial redraws that would erase
+// stamped content call this instead of pushing the bare buffer.
+void presentWithOverlays() {
+  if (farmerOverlayActive && !waterAnimActive &&
+      (page == GARDEN || page == PLANT_VIEW)) {
+    drawFarmerInspector(2);
+    drawFarmerSpeechBubble(farmerOverlaySaying);
+  }
+  if (nearbyPopupActive && page != NEARBY) drawNearbyPopup();
+  if (deathWarnModal) drawDeathWarnPopup();
+  presentFrame();
 }
 
 void render(bool presentNow) {
@@ -3994,8 +4105,8 @@ void render(bool presentNow) {
       drawNav();
     }
   }
-  if (presentNow) presentFrame();
-  overlayDirty = true;   // a full repaint always lands under the overlay
+  if (presentNow) presentWithOverlays();
+  overlayDirty = false;  // overlays ride inside the buffer on every push
 }
 
 uint8_t waterToleranceNow() {
@@ -4940,7 +5051,7 @@ bool tryDrawGownBmp(const char *filename) {
           }
           int py0 = SY(screenY), py1 = SY(screenY + 1);
           for (int py = py0; py < py1; ++py)
-            canvas.pushImage(0, py, PANEL_W, 1, panelRow);
+            blitPanelRow(0, py, PANEL_W, panelRow);
         }
         game.setSwapBytes(oldSwap);
         free(row);
@@ -5143,7 +5254,9 @@ void drawFarmerHeadScaled(int cx, int cy, uint8_t character, int s) {
     game.drawLine(cx + SP(-8), cy + SP(-3), cx + SP(-5), cy + SP(-1), rgb565(70, 90, 100));
     game.fillRoundRect(cx + SP(-7), cy + SP(4), SP(14), SP(4), min(SP(2), SP(3)), bBeard);
     game.fillRect(cx + SP(-1), cy + SP(4), SP(2), SP(2), skin);
-    game.fillRoundRect(cx + SP(-3), cy + SP(7), SP(7), SP(6), min(SP(2), SP(3)), bBeard);
+    game.fillRect(cx + SP(-3), cy + SP(8), SP(7), SP(3), bBeard);
+    for (int i = -2; i <= 2; i += 2)
+      game.drawPixel(cx + SP(i), cy + SP(7), bBeard);
   } else {
     game.fillRoundRect(cx + SP(-12), cy + SP(-14), SP(24), SP(8), min(SP(6), SP(11)), hair);
     game.fillRect(cx + SP(-13), cy + SP(-6), SP(5), SP(29), hair);
@@ -5660,11 +5773,15 @@ void handleNearbyTouch(int x, int y) {
         outgoingMessage[length] = key;
         outgoingMessage[length + 1] = '\0';
       }
+      refreshKeyboardField();
+      fieldOnlyRedraw = true;
       return;
     }
     int length = strlen(outgoingMessage);
     if (y >= 138 && y < 164 && x >= 263) {
       if (length) outgoingMessage[length - 1] = '\0';
+      refreshKeyboardField();
+      fieldOnlyRedraw = true;
     } else if (y >= 168 && y < 196) {
       if (x < 104) {
         if (length > 0 && length < (int)sizeof(outgoingMessage) - 1 &&
@@ -5672,6 +5789,8 @@ void handleNearbyTouch(int x, int y) {
           outgoingMessage[length] = ' ';
           outgoingMessage[length + 1] = '\0';
         }
+        refreshKeyboardField();
+        fieldOnlyRedraw = true;
       } else if (x < 216) {
         if (selectedNearbyPeerValid() && length > 0 &&
             sendNearbyPacket(nearbyPeers[selectedNearbyPeer].mac,
@@ -5772,6 +5891,8 @@ void handleNearbyTouch(int x, int y) {
         outgoingCash[length] = keys[(y >= 132 ? 5 : 0) + index];
         outgoingCash[length + 1] = '\0';
       }
+      refreshMoneyField();
+      fieldOnlyRedraw = true;
     } else if (y >= 158 && y < 179) {
       if (x < 108) {
         outgoingCash[0] = '\0';
@@ -5780,6 +5901,8 @@ void handleNearbyTouch(int x, int y) {
       } else {
         if (length) outgoingCash[length - 1] = '\0';
       }
+      refreshMoneyField();
+      fieldOnlyRedraw = true;
     } else if (y >= 182 && y < 203) {
       if (x < 108) {
         snprintf(outgoingCash, sizeof(outgoingCash), "%u", credits);
@@ -5807,16 +5930,22 @@ void handleGrowerNameTouch(int x, int y) {
   char key = fullKeyboardKey(x, y, nameKbMode);
   if (key) {
     appendGrowerNameLetter(key);
+    refreshKeyboardField();
+    fieldOnlyRedraw = true;
     return;
   }
   if (y >= 138 && y < 164 && x >= 263) {
     int length = strlen(growerNameEdit);
     if (length) growerNameEdit[length - 1] = '\0';
+    refreshKeyboardField();
+    fieldOnlyRedraw = true;
   } else if (y >= 168 && y < 196) {
     int length = strlen(growerNameEdit);
     if (x < 104) {
       if (length > 0 && length < sizeof(growerNameEdit) - 1 &&
           growerNameEdit[length - 1] != ' ') appendGrowerNameLetter(' ');
+      refreshKeyboardField();
+      fieldOnlyRedraw = true;
     } else if (x < 216) {
       if (growerNameEdit[0]) {
         strlcpy(growerName, growerNameEdit, sizeof(growerName));
@@ -5854,6 +5983,7 @@ void chooseFarmerCharacter(uint8_t character) {
 }
 
 void handleTouch(int x, int y) {
+  fieldOnlyRedraw = false;   // cleared unless a tap only refreshed its field
   if (deathWarnModal) {
     // Any tap dismisses the crisis popup and jumps to the garden.
     deathWarnModal = false;
@@ -5959,7 +6089,7 @@ void handleTouch(int x, int y) {
       }
       break;
     case MARKET:
-      if (y >= 72 && y < 93) {
+      if (y >= 70 && y < 98) {
         marketGearMode = x >= 160;
         marketSellMode = 0;
         marketSellConfirm = false;
@@ -5968,30 +6098,59 @@ void handleTouch(int x, int y) {
         return;   // the modal renders itself; skip the full-page tail render
       } else if (marketGearMode) {
         // Gear grid: bong / lighters / papers cards; the stoned card is info.
-        if (y >= 94 && y < 132) {
+        if (y >= 102 && y < 140) {
           if (x < 160) buyBong();
           else buyLighters();
-        } else if (y >= 136 && y < 174) {
+        } else if (y >= 144 && y < 182) {
           if (x < 160) buyRollingPapers();
-        } else if (y >= 177 && y < 205) {
-          if (x < 107) takeSmokeBreak(1, false);
-          else if (x < 213) takeSmokeBreak(2, false);
-          else takeSmokeBreak(1, true);
         }
       } else {
         // Sell grid: each card opens the strain submenu.
-        if (y >= 94 && y < 132) {
+        if (y >= 102 && y < 140) {
           if (x < 160) openMarketSell(1);
           else openMarketSell(2);
-        } else if (y >= 136 && y < 174) {
+        } else if (y >= 144 && y < 182) {
           if (x < 160) openMarketSell(3);
           else openMarketSell(4);
         }
       }
       break;
     case STASH:
-      if (untrimmedUnits > 0 && y >= 187 && y < 205) {
-        page = TRIM_ROOM;
+      if (smokeMenuOpen) {
+        if (smokeMenuConfirm) {
+          if (y >= 162 && y < 188) {
+            if (x < 160) {
+              smokeMenuConfirm = false;          // BACK - nothing smoked
+            } else {
+              smokeMenuConfirm = false;
+              smokeMenuOpen = false;
+              if (smokeMenuPick == 1) takeSmokeBreak(1, false);
+              else if (smokeMenuPick == 2) takeSmokeBreak(2, false);
+              else takeSmokeBreak(1, true);      // tail runs the smoke scene
+            }
+          } else {
+            smokeMenuConfirm = false;            // tap anywhere else cancels
+          }
+        } else if (y >= 74 && y < 94 && x >= 243) {
+          smokeMenuOpen = false;                 // BACK, top-right of the box
+        } else if (y >= 88 && y < 170) {
+          uint8_t r = (y - 88) / 28;
+          bool ready[3] = {(bool)(bongs && stashTotal()),
+                           (bool)(bongs && hashRoomUnlocked && hashTotal()),
+                           (bool)(stashTotal() && lighters && rollingPapers)};
+          if (r < 3 && ready[r]) {
+            smokeMenuPick = r + 1;
+            smokeMenuConfirm = true;             // ask once before smoking
+          }
+        }
+        break;
+      }
+      if (y >= 184 && y < 204) {
+        if (x < 160) {
+          if (untrimmedUnits > 0) page = TRIM_ROOM;
+        } else {
+          smokeMenuOpen = true;                  // open the smoke-break chooser
+        }
       }
       break;
     case OPTIONS:
@@ -6093,6 +6252,7 @@ void handleTouch(int x, int y) {
     case PLANTING:
       break;
   }
+  if (fieldOnlyRedraw) return;   // keyboard tap already refreshed its field
   bool cutscenePending = waterAnimationRequested || smokeAnimationRequested ||
                          hashAnimationRequested || flowerHarvestAnimationRequested ||
                          moldAnimationRequested || flowerTrimAnimationRequested ||
@@ -6928,7 +7088,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: Benji v2 + Ray-Bans\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: frame buffer + smoke break on stash\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
@@ -6951,6 +7111,16 @@ void setup() {
 #endif
   canvas.init();
   canvas.setRotation(1);  // Landscape 480x320 on this panel
+
+  // Full-frame render buffer: every page draws into PSRAM and presentFrame()
+  // pushes it in one atomic pass — no more mid-draw flicker anywhere.
+  frameBuf.setColorDepth(16);
+  if (frameBuf.createSprite(PANEL_W, PANEL_H)) {
+    game.tft = (TFT_eSPI *)&frameBuf;
+    frameBufferActive = true;
+  } else {
+    Serial.println("[GFX] frame buffer alloc failed - direct drawing");
+  }
 
   loadGame();
   catchUpGrowTime();   // grow continues while the screen slept / board reset
@@ -7181,6 +7351,7 @@ void loop() {
       if (page == GARDEN && plantActive && growth < 100 &&
           stageForGrowth() == lastDrawnStage) {
         drawGardenSidePanel();
+        presentWithOverlays();   // side panel only: keep overlays stamped
       } else if (page == PLANT_VIEW && plantActive &&
                  stageForGrowth() == lastDrawnStage) {
         // Fullscreen art unchanged; nothing on screen needs updating.
