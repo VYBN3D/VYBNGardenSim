@@ -1,8 +1,8 @@
-# WinFlorida Garden Sim — Changelog
+# VYBN Garden Sim — Changelog
 
 Firmware versions for the 4" S3 and 2.8" S3 WinFlorida Garden Sim boards.
 Each tagged version publishes `.bin` files + `version.txt` on the
-[Releases page](https://github.com/VYBN3D/WinFloridaGardenSim/releases);
+[Releases page](https://github.com/VYBN3D/VYBNGardenSim/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
 ## v39 — WinFlorida rebrand

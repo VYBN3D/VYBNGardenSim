@@ -185,14 +185,42 @@ const uint16_t ACCENT_DARK = 0x3D66;
 const uint16_t GOLD = 0xFEA0;
 const uint16_t RED = 0xE986;
 
-// Small 24x24 alpha-cut mask of the WinFlorida leaf logo.
-const uint8_t winLeafLogoMask[72] PROGMEM = {
-  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7F,0x80,0x01,0xFF,0xE0,
-  0x07,0x80,0x78,0x0E,0x00,0x1C,0x1C,0x00,0x0C,0x18,0x00,0xC0,
-  0x38,0x1F,0xC0,0x30,0x78,0x80,0x30,0xC1,0x80,0x31,0x81,0x80,
-  0x31,0x01,0x80,0x31,0x21,0x00,0x32,0x43,0x00,0x1A,0xC6,0x00,
-  0x18,0x8C,0x00,0x1C,0xF8,0x0C,0x0D,0xF0,0x1C,0x03,0x00,0x78,
-  0x07,0xFF,0xE0,0x0E,0x7F,0x80,0x00,0x00,0x00,0x00,0x00,0x00
+// VYBN Garden Sim logo masks, generated from the VYBN script logo PNG.
+// vybnScriptMask: 48x48 full script mark, boot splash.
+// vybnMarkMask: 24x24 eye mark ("I" in the B), small logo.
+static const uint8_t vybnScriptMask[288] PROGMEM = {
+0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x0C,0xE0,0x00,0x00,
+  0x00,0x00,0x0C,0xC0,0x00,0x00,0x00,0x00,0x0C,0xC0,0x00,0x00,
+  0x81,0x88,0x19,0xC0,0x00,0x00,0xC1,0x8C,0x39,0x80,0x00,0x00,
+  0xC1,0x8C,0x33,0x80,0x00,0x00,0xE1,0x1C,0x73,0x00,0x00,0x00,
+  0x63,0x18,0x67,0x00,0x00,0x00,0x63,0x18,0xE7,0x1C,0x00,0x00,
+  0x63,0x18,0xCF,0xFF,0x80,0x00,0x63,0x19,0x8F,0x81,0xFE,0x3E,
+  0x33,0x19,0x9E,0x07,0xC3,0xF3,0x33,0x1B,0x1C,0x1E,0x41,0xC3,
+  0x33,0x1B,0x18,0x38,0x43,0x83,0x33,0x1E,0x30,0xF0,0xC3,0x03,
+  0x33,0x3E,0x31,0xF0,0xC6,0x07,0x1B,0x3C,0x63,0xF1,0x86,0x06,
+  0x1F,0x3C,0x6E,0x61,0x80,0x0C,0x1E,0x3C,0xDC,0xE3,0x00,0x00,
+  0x1E,0x18,0xFF,0xC3,0x00,0x00,0x0E,0x18,0xF3,0xC6,0x00,0x00,
+  0x0E,0x31,0xE1,0x8C,0x00,0x00,0x0E,0x31,0xC0,0x1C,0x00,0x00,
+  0x0E,0x63,0x80,0x38,0x00,0x00,0x06,0x67,0x00,0x70,0x00,0x00,
+  0x02,0x63,0x00,0xE0,0x00,0x00,0x00,0xC1,0x81,0xC0,0x00,0x00,
+  0x00,0xC1,0x87,0x00,0x00,0x00,0x00,0xC1,0xFE,0x00,0x00,0x00,
+  0x01,0x80,0xF8,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,
+  0x01,0x80,0x00,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,
+  0x03,0x80,0x00,0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,0x00,
+  0x03,0x00,0x00,0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,0x00,
+  0x03,0x00,0x00,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+};
+static const uint8_t vybnMarkMask[72] PROGMEM = {
+0x00,0x03,0xC0,0x00,0x0F,0xC0,0x00,0x08,0x1E,0x00,0x00,0x7E,
+  0x00,0x01,0xE6,0x00,0x03,0x86,0x00,0x0F,0x06,0x00,0x1E,0x0C,
+  0x00,0x3F,0x0C,0x00,0xEE,0x18,0x01,0xCE,0x18,0x03,0xCE,0x30,
+  0x07,0x7C,0x30,0x06,0x78,0x60,0x04,0x30,0xC0,0x38,0x01,0xC0,
+  0x70,0x03,0x80,0x60,0x07,0x00,0x60,0x0E,0x00,0x60,0x1C,0x00,
+  0x70,0x38,0x00,0x30,0xE0,0x00,0x3F,0xC0,0x00,0x0E,0x00,0x00,
 };
 
 uint8_t growth = 0;
@@ -308,7 +336,7 @@ uint8_t dryStreakTicks = 0;         // consecutive ticks the plant has been <20%
 bool plantDeathAnimationRequested = false;
 bool pestAnimationRequested = false;
 
-const char DEVICE_BRAND[] = "WinFlorida";
+const char DEVICE_BRAND[] = "VYBN";
 const uint16_t NEARBY_MAGIC = 0xC47A;
 const uint8_t PACKET_HELLO = 1;
 const uint8_t PACKET_MESSAGE = 2;
@@ -903,11 +931,11 @@ uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-void drawLeafLogo(int x, int y, int scale, uint16_t color) {
+void drawVybnMark(int x, int y, int scale, uint16_t color) {
   for (int row = 0; row < 24; ++row) {
     for (int col = 0; col < 24; ++col) {
       int bitIndex = row * 24 + col;
-      uint8_t packed = pgm_read_byte(&winLeafLogoMask[bitIndex >> 3]);
+      uint8_t packed = pgm_read_byte(&vybnMarkMask[bitIndex >> 3]);
       if (packed & (0x80 >> (bitIndex & 7))) {
         if (scale == 1) game.fillRect(x + col, y + row, 1, 1, color);
         else game.fillRect(x + col * scale, y + row * scale, scale, scale, color);
@@ -980,7 +1008,7 @@ uint8_t nextSeededStrain(uint8_t from, int dir) {
 }
 
 
-// WinFlorida menu staples + cultivation names, easy -> hard display order.
+// VYBN Garden Sim menu staples + cultivation names, easy -> hard display order.
 const char *strainNames[STRAIN_COUNT] = {
   "Northern Lights", "Blue Dream", "Banana Papaya", "Superbuff Cherry", "Jack Herer",
   "Granddaddy Purple", "White Widow", "Blue Lobster", "OG Kush", "Sour Diesel",
@@ -2027,9 +2055,9 @@ void drawBatteryStatus(int x, int cy) {
 void drawHeader() {
   game.fillRect(0, 0, SCREEN_W, HEADER_H, 0x0861);
   game.drawFastHLine(0, HEADER_H - 1, SCREEN_W, 0x4D89);
-  drawLeafLogo(7, 2, 1, TFT_WHITE);
+  drawVybnMark(7, 2, 1, TFT_WHITE);
   game.setTextColor(TEXT_MAIN, 0x0861);
-  game.drawString("WINFLORIDA", 35, 4, 2);
+  game.drawString("VYBN", 35, 4, 2);
   game.setTextColor(TEXT_DIM, 0x0861);
   game.drawString(growerName, 36, 18, 1);
 
@@ -3104,8 +3132,8 @@ void drawGrowerIdCard() {
 #include <Update.h>
 
 static const char *OTA_RELEASE_BASE =
-    "https://github.com/VYBN3D/WinFloridaGardenSim/releases/latest/download/";
-static const char *OTA_BIN_NAME = "WinFloridaGardenSim_S28.ino.bin";
+    "https://github.com/VYBN3D/VYBNGardenSim/releases/latest/download/";
+static const char *OTA_BIN_NAME = "VYBNGardenSim_S28.ino.bin";
 
 static bool wifiConnected() { return WiFi.status() == WL_CONNECTED; }
 
@@ -4853,7 +4881,7 @@ void drawWateringFrame(int frame) {
   game.drawLine(x - 5, 126, x - 11, 124, skin);
   game.drawLine(x + 33, 135, x + 37, 136, shirt);
   game.drawLine(x + 37, 136, x + 40, 137, skin);
-  drawLeafLogo(x + 8, 125, 1, TFT_WHITE);
+  drawVybnMark(x + 8, 125, 1, TFT_WHITE);
   drawFarmerHeadLarge(x + 20, 112, farmerCharacter);
 
   int canX = x - 20;
@@ -4919,7 +4947,7 @@ void drawFarmerInspector(int pose) {
   game.fillRoundRect(cx - torsoW / 2, footY - 18 - torsoH, torsoW, torsoH, 6, shirt);
   game.fillRoundRect(cx - torsoW / 2 - 4, footY - 18 - torsoH + 5, 6, torsoH - 8, 3, shirt);
   game.fillRoundRect(cx + torsoW / 2 - 2, footY - 18 - torsoH + 5, 6, torsoH - 8, 3, shirt);
-  drawLeafLogo(cx - 12, footY - 18 - torsoH + 3, 1, TFT_WHITE);
+  drawVybnMark(cx - 12, footY - 18 - torsoH + 3, 1, TFT_WHITE);
   game.drawLine(cx - torsoW / 2 - 3, footY - 31, cx - torsoW / 2, footY - 24, skin);
   game.drawLine(cx + torsoW / 2 + 1, footY - 31, cx + torsoW / 2 - 2, footY - 24, skin);
   drawFarmerHeadLarge(cx, footY - 59, farmerCharacter);
@@ -5034,7 +5062,7 @@ void drawSmokeCutsceneFrame(int frame) {
   game.fillRoundRect(cx - 23, footY - 62, 46, 42, 8, shirt);
   game.fillRoundRect(cx - 29, footY - 55, 11, 32, 4, shirt);
   game.fillRoundRect(cx + 18, footY - 55, 11, 32, 4, shirt);
-  drawLeafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
+  drawVybnMark(cx - 12, footY - 58, 1, TFT_WHITE);
   game.drawLine(cx - 19, footY - 53, 160, 117, shirt);
   game.drawLine(160, 117, 156, 119, skin);
   game.drawLine(cx + 23, footY - 48, cx + 25, footY - 24, shirt);
@@ -5379,7 +5407,7 @@ void drawGownUpCutsceneFrame(int frame) {
   game.fillRoundRect(cx - 14, footY - 62, 28, 42, 7, shirt);
   game.fillRoundRect(cx - 19, footY - 55, 6, 32, 3, shirt);
   game.fillRoundRect(cx + 13, footY - 55, 6, 32, 3, shirt);
-  drawLeafLogo(cx - 12, footY - 58, 1, TFT_WHITE);
+  drawVybnMark(cx - 12, footY - 58, 1, TFT_WHITE);
   drawFarmerHeadLarge(cx, cy, farmerCharacter);
 
   if (frame >= 4) {  // hairnet goes on in the locker room and stays on
@@ -6974,7 +7002,7 @@ void showBootSplash() {
   // blitted atomically each step - no erase-then-redraw flicker.
   game.fillScreen(TFT_BLACK);
   game.setTextColor(TFT_WHITE, TFT_BLACK);
-  game.drawCentreString("WINFLORIDA", 160, 134, 4);
+  game.drawCentreString("VYBN", 160, 134, 4);
   game.setTextColor(0x9EFB, TFT_BLACK);
   game.drawCentreString("GARDEN SIM", 160, 176, 2);
   // Firmware tagline: tiny dim line under the title, handy after OTA swaps.
@@ -6985,12 +7013,12 @@ void showBootSplash() {
   TFT_eSprite spr(&canvas);  // panel-bound sprite; blitted into the game view
   // Logo block art on the 320x240 panel: 24 mask cells drawn with
   // alternating 2/4 px blocks = 72x72, centered above the title text so it
-  // never covers WINFLORIDA.
-  int cellX[24], cellY[24];
+  // never covers VYBN.
+  int cellX[48], cellY[48];
   int acc = 0;
-  for (int i = 0; i < 24; ++i) { cellX[i] = acc; acc += (i % 2) ? 4 : 2; }
+  for (int i = 0; i < 48; ++i) { cellX[i] = acc; acc += (i % 2) ? 2 : 1; }
   acc = 0;
-  for (int i = 0; i < 24; ++i) { cellY[i] = acc; acc += (i % 2) ? 4 : 2; }
+  for (int i = 0; i < 48; ++i) { cellY[i] = acc; acc += (i % 2) ? 2 : 1; }
   spr.createSprite(72, 72);
   const int frames = 20;
   for (int i = 0; i < frames; ++i) {
@@ -6998,12 +7026,12 @@ void showBootSplash() {
     float pulse = 0.5f - 0.5f * cosf(t * 2.0f * PI);  // 0 -> 1 -> 0, slow breath
     int v = 140 + (int)(pulse * 115.0f);  // logo brightness 140..255
     spr.fillSprite(TFT_BLACK);
-    for (int row = 0; row < 24; ++row) {
-      for (int col = 0; col < 24; ++col) {
-        int bit = row * 24 + col;
-        if (winLeafLogoMask[bit >> 3] & (0x80 >> (bit & 7)))
-          spr.fillRect(cellX[col], cellY[row], (col % 2) ? 4 : 2,
-                       (row % 2) ? 4 : 2, rgb565(v - 18, v, v - 10));
+    for (int row = 0; row < 48; ++row) {
+      for (int col = 0; col < 48; ++col) {
+        int bit = row * 48 + col;
+        if (vybnScriptMask[bit >> 3] & (0x80 >> (bit & 7)))
+          spr.fillRect(cellX[col], cellY[row], (col % 2) ? 2 : 1,
+                       (row % 2) ? 2 : 1, rgb565(v - 18, v, v - 10));
       }
     }
     spr.pushSprite(SX(124), SY(28));
@@ -7071,7 +7099,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: WinFlorida rebrand\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: VYBN Garden Sim fork\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
