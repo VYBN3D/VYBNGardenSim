@@ -5,6 +5,17 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v37 — SD-art look without an SD card
+- **Garden room now matches the PLANT BMPs even with no microSD**: the
+  vector fallback was rebuilt from pixel analysis of the SD art — same
+  gradient, two grid systems, trellis wires, beam, four hanging grow
+  lights, dark floor, and four terracotta pots with stage-true plants
+  (stake stems, sage branches, frosted bud lumps, fan leaves, pistils)
+- The old mini-room fallback (3 small plants + one big vector plant) is
+  gone; the empty state shows four bare pots + "Plant a seed to begin"
+- SD card still wins when present: identical `/PLANT0-4.BMP` path
+- No new RAM used; both boards compile at 40% of app storage
+
 ## v31 — Flicker-free frame buffer + smoke break on stash
 - **Flicker-free rendering**: the game now draws every page into a full-size
   PSRAM frame buffer and pushes it to the panel in one atomic pass — no more

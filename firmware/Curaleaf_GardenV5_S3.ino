@@ -2095,20 +2095,193 @@ void drawPot() {
 }
 
 void drawGardenBackdrop() {
-  // A dim greenhouse gradient gives the foliage contrast on the small TFT.
-  for (int y = HEADER_H; y < 172; ++y) {
-    float blend = (float)(y - HEADER_H) / 144.0f;
-    uint8_t r = 5 + (uint8_t)(blend * 8);
-    uint8_t g = 20 + (uint8_t)(blend * 24);
-    uint8_t b = 22 + (uint8_t)(blend * 15);
+  // Faithful vector rebuild of the SD art's grow room: gradient, two grid
+  // systems, trellis wires, beam, four hanging grow lights and the floor.
+  for (int y = HEADER_H; y < HEADER_H + 137; ++y) {
+    int ay = y - HEADER_H;
+    uint8_t r = 7 + (uint8_t)((ay * 3) / 136);
+    uint8_t g = 23 + (uint8_t)((ay * 14) / 136);
+    uint8_t b = 25 + (uint8_t)((ay * 9) / 136);
     game.drawBandHLine(0, y, 178, rgb565(r, g, b));
   }
-  game.drawFastVLine(12, 31, 135, rgb565(29, 53, 51));
-  game.drawFastVLine(165, 31, 135, rgb565(29, 53, 51));
-  game.drawFastHLine(12, 57, 153, rgb565(23, 44, 42));
-  game.drawFastHLine(12, 111, 153, rgb565(23, 44, 42));
-  game.fillRect(0, 166, 178, 6, rgb565(32, 49, 39));
-  game.drawFastHLine(0, 166, 178, rgb565(76, 91, 61));
+  // Dark background grid.
+  static const int darkCols[5] = {7, 43, 88, 133, 170};
+  for (int i = 0; i < 5; ++i)
+    game.drawFastVLine(darkCols[i], 23 + HEADER_H, 114, rgb565(27, 50, 48));
+  game.drawFastHLine(0, 41 + HEADER_H, 178, rgb565(27, 47, 43));
+  // Light foreground grid.
+  static const int lightCols[8] = {15, 38, 61, 84, 107, 130, 153, 175};
+  for (int i = 0; i < 8; ++i)
+    game.drawFastVLine(lightCols[i], 41 + HEADER_H, 96, rgb565(43, 66, 58));
+  static const int lightRows[4] = {52, 73, 94, 115};
+  for (int i = 0; i < 4; ++i)
+    game.drawFastHLine(0, lightRows[i] + HEADER_H, 178, rgb565(43, 66, 58));
+  // Sage trellis wires.
+  static const int wires[3] = {66, 91, 116};
+  for (int i = 0; i < 3; ++i)
+    game.drawFastHLine(0, wires[i] + HEADER_H, 178, rgb565(99, 116, 97));
+  // Structural beam just under the light rail.
+  game.fillRect(0, 20 + HEADER_H, 178, 3, rgb565(43, 59, 53));
+  // Four hanging grow lights: rail, glow and lamp body.
+  for (int i = 0; i < 4; ++i) {
+    int lx = 10 + i * 44;
+    game.fillRect(lx, 5 + HEADER_H, 33, 4, rgb565(57, 66, 60));
+    game.fillRect(lx + 2, 10 + HEADER_H, 29, 3, rgb565(224, 220, 183));
+    game.fillRect(lx + 2, 13 + HEADER_H, 29, 2, rgb565(170, 176, 151));
+  }
+  // Dark floor with a pale contact line and sparse dither.
+  game.drawFastHLine(0, 137 + HEADER_H, 178, rgb565(69, 85, 60));
+  game.fillRect(0, 138 + HEADER_H, 178, 6, rgb565(12, 25, 22));
+  static const int dith[7][2] = {{20, 139}, {55, 140}, {90, 139}, {130, 141},
+                                 {160, 140}, {40, 142}, {110, 142}};
+  for (int i = 0; i < 7; ++i)
+    game.drawPixel(dith[i][0], dith[i][1] + HEADER_H, rgb565(24, 39, 29));
+}
+
+// ---- Vector replicas of the PLANT<n>.BMP art (used when no SD card) ----
+
+void drawArtPot(int cx) {
+  const uint16_t rim = rgb565(204, 131, 77);
+  const uint16_t out = rgb565(78, 43, 30);
+  const uint16_t band = rgb565(73, 48, 31);
+  const uint16_t body = rgb565(147, 75, 45);
+  const uint16_t hi = rgb565(190, 112, 66);
+  game.fillRect(cx - 12, 129 + HEADER_H, 25, 2, rim);
+  game.drawPixel(cx - 12, 129 + HEADER_H, out);
+  game.drawPixel(cx + 12, 129 + HEADER_H, out);
+  game.fillRect(cx - 10, 131 + HEADER_H, 21, 10, out);
+  game.fillRect(cx - 9, 132 + HEADER_H, 19, 2, band);
+  game.fillTriangle(cx - 9, 134 + HEADER_H, cx + 9, 134 + HEADER_H,
+                    cx + 6, 140 + HEADER_H, body);
+  game.fillTriangle(cx - 9, 134 + HEADER_H, cx + 6, 140 + HEADER_H,
+                    cx - 7, 140 + HEADER_H, body);
+  game.fillRect(cx - 8, 139 + HEADER_H, 15, 1, out);
+  game.drawLine(cx - 6, 134 + HEADER_H, cx - 5, 139 + HEADER_H, hi);
+}
+
+void drawArtBranch(int x1, int y1, int x2, int y2, uint16_t c) {
+  game.drawLine(x1, y1 + HEADER_H, x2, y2 + HEADER_H, c);
+  game.drawLine(x1 + 1, y1 + HEADER_H, x2 + 1, y2 + HEADER_H, c);
+}
+
+void drawArtBud(int x, int y, float s, int pistils) {
+  const uint16_t calyx = rgb565(31, 78, 39);
+  const uint16_t mid = rgb565(94, 128, 66);
+  const uint16_t lite = rgb565(112, 159, 91);
+  const uint16_t fuzz = rgb565(119, 131, 108);
+  const uint16_t gold = rgb565(176, 196, 124);
+  const uint16_t pil = rgb565(205, 201, 157);
+  const uint16_t pilW = rgb565(224, 220, 183);
+  int r1 = (int)(3.4f * s);
+  if (r1 < 2) r1 = 2;
+  game.fillCircle(x, y + HEADER_H, r1, mid);
+  game.fillCircle(x - r1 + 1, y - (int)(1.5f * s) + HEADER_H,
+                  max(1, (int)(2.2f * s)), lite);
+  game.fillCircle(x + (int)(1.5f * s), y - (int)(2 * s) + HEADER_H,
+                  max(1, (int)(1.6f * s)), mid);
+  game.fillCircle(x + (int)s, y + (int)(1.5f * s) + HEADER_H,
+                  max(1, (int)(1.8f * s)), calyx);
+  game.fillCircle(x - (int)(2 * s), y + (int)(2.2f * s) + HEADER_H,
+                  max(1, (int)(1.4f * s)), calyx);
+  // Fuzzy sage/gold speckles so the lump reads as frosty cannabis.
+  static const int8_t fz[12][2] = {{-3, -2}, {2, -3}, {4, 0},  {-4, 1},
+                                   {1, 2},   {-2, 3}, {3, 3},  {0, -4},
+                                   {-5, -1}, {5, 2},  {-1, -3}, {2, 4}};
+  for (int i = 0; i < pistils * 2 && i < 12; ++i) {
+    uint16_t c = (i % 3) ? fuzz : ((i % 2) ? gold : pil);
+    game.drawPixel(x + (int)(fz[i][0] * s / 1.2f),
+                   y + (int)(fz[i][1] * s / 1.2f) + HEADER_H, c);
+    if (i % 4 == 0)
+      game.drawPixel(x + (int)(fz[i][0] * s / 1.2f) + 1,
+                     y + (int)(fz[i][1] * s / 1.2f) - 1 + HEADER_H, pilW);
+  }
+  for (int i = 0; i < pistils; ++i) {
+    int px = x + ((i * 7) % (2 * r1)) - r1;
+    int py = y - r1 + 1 + (i % 4);
+    game.drawPixel(px, py + HEADER_H, (i % 2) ? pil : gold);
+    game.drawPixel(px + 1, py - 1 + HEADER_H, (i % 3 == 0) ? pilW : lite);
+  }
+}
+
+void drawArtPlant(int cx, int stage) {
+  const uint16_t stemThin = rgb565(99, 116, 97);
+  const uint16_t stemA = rgb565(119, 131, 108);
+  const uint16_t stemB = rgb565(88, 132, 60);
+  // A stake-thin stem spans the room height in every stage.
+  if (stage >= 2) {
+    game.drawFastVLine(cx, 57 + HEADER_H, 72, stemA);
+    game.drawFastVLine(cx + 1, 57 + HEADER_H, 72, stemB);
+  } else {
+    game.drawFastVLine(cx, 57 + HEADER_H, 72, stemThin);
+  }
+  drawArtPot(cx + 1);
+  int topY = stage == 0 ? 112 : stage == 1 ? 100 : stage == 2 ? 90
+             : stage == 3 ? 78 : 54;
+  if (stage >= 3) {
+    if (stage == 4) {
+      // Branches rising up-out to terminal buds plus a stacked cola spire.
+      for (int sgn = -1; sgn <= 1; sgn += 2) {
+        drawArtBranch(cx, 104, cx + sgn * 11, 82, stemA);
+        drawArtBranch(cx, 116, cx + sgn * 9, 98, stemA);
+      }
+      drawArtBud(cx, 64, 1.3f, 7);
+      drawArtBud(cx - 1, 58, 1.1f, 6);
+      drawArtBud(cx + 1, 52, 0.95f, 6);
+      drawArtBud(cx - 6, 66, 1.0f, 5);
+      drawArtBud(cx + 6, 66, 1.0f, 5);
+      drawFanLeaf(cx - 9, 68 + HEADER_H, 0.42f, -50);
+      drawFanLeaf(cx + 9, 68 + HEADER_H, 0.42f, 50);
+    } else {
+      for (int sgn = -1; sgn <= 1; sgn += 2) {
+        drawArtBranch(cx, 104, cx + sgn * 12, 80, stemA);
+        drawArtBranch(cx, 114, cx + sgn * 10, 92, stemA);
+      }
+      drawArtBud(cx - 12, 77, 0.95f, 5);
+      drawArtBud(cx + 12, 77, 0.95f, 5);
+      drawArtBud(cx - 10, 89, 1.0f, 5);
+      drawArtBud(cx + 10, 89, 1.0f, 5);
+    }
+  } else {
+    drawFanLeaf(cx, topY + HEADER_H, stage ? 0.6f : 0.45f, 0);
+  }
+  // Growth nodes: paired fan leaves, budding from stage 3 up.
+  struct GN { int8_t y; float s; float bs; };
+  static const GN N0[] = {{119, 0.55f, 0}};
+  static const GN N1[] = {{106, 0.6f, 0}, {118, 0.55f, 0}};
+  static const GN N2[] = {{96, 0.65f, 0}, {106, 0.6f, 0}, {116, 0.55f, 0}};
+  static const GN N3[] = {{84, 0.6f, 0.8f}, {96, 0.6f, 0.95f},
+                          {108, 0.6f, 0.7f}, {118, 0.55f, 0}};
+  static const GN N4[] = {{72, 0.5f, 1.05f}, {84, 0.55f, 1.1f},
+                          {96, 0.55f, 1.0f}, {108, 0.55f, 0.85f},
+                          {118, 0.5f, 0}};
+  const GN *ns = stage == 0 ? N0 : stage == 1 ? N1 : stage == 2 ? N2
+                 : stage == 3 ? N3 : N4;
+  int nc = stage == 0 ? 1 : stage == 1 ? 2 : stage == 2 ? 3
+           : stage == 3 ? 4 : 5;
+  for (int i = 0; i < nc; ++i) {
+    const GN &n = ns[i];
+    drawFanLeaf(cx - (int)(8 * n.s), n.y + HEADER_H, n.s * 0.62f, -36);
+    drawFanLeaf(cx + (int)(8 * n.s), n.y + HEADER_H, n.s * 0.62f, 36);
+    if (n.bs > 0) {
+      drawArtBud(cx - (int)(11 * n.s), n.y - (int)(8 * n.s), n.bs,
+                 stage == 4 ? 6 : 3);
+      drawArtBud(cx + (int)(11 * n.s), n.y - (int)(8 * n.s), n.bs,
+                 stage == 4 ? 6 : 3);
+    }
+  }
+  if (stage == 4) {
+    // White pistil flecks scattered across the whole canopy.
+    static const int8_t sp[16][2] = {{16, 66}, {30, 66}, {12, 78}, {36, 78},
+                                     {20, 58}, {27, 58}, {16, 90}, {31, 90},
+                                     {12, 102}, {35, 102}, {18, 72}, {29, 72},
+                                     {14, 84}, {33, 84}, {20, 96}, {27, 96}};
+    for (int i = 0; i < 16; ++i) {
+      game.drawPixel(cx - 23 + sp[i][0], sp[i][1] + HEADER_H,
+                     rgb565(224, 220, 183));
+      game.drawPixel(cx - 23 + sp[i][0] + 1, sp[i][1] - 1 + HEADER_H,
+                     rgb565(205, 201, 157));
+    }
+  }
 }
 
 void switchToSdBus() {
@@ -2462,65 +2635,22 @@ void plantSeedFromTap(int x, int y) {
 void drawPlant() {
   if (drawPlantBitmap()) return;
   drawGardenBackdrop();
-  // Built-in fallback still shows a whole room when no microSD card is present.
-  drawMiniRoomPlant(38, 166, 0.68f);
-  drawMiniRoomPlant(89, 157, 0.46f);
-  drawMiniRoomPlant(140, 166, 0.68f);
   if (!plantActive) {
-    drawPot();
+    // Empty room: four bare pots and the invite to plant.
+    drawArtPot(24);
+    drawArtPot(68);
+    drawArtPot(112);
+    drawArtPot(156);
     game.setTextColor(TEXT_DIM, rgb565(12, 33, 35));
     game.drawCentreString("Plant a seed to begin", 89, 91, 1);
     return;
   }
-
+  // Vector fallback matches the SD art: four pots, all at the growth stage.
   int stage = stageForGrowth();
-  float size = 0.48f + (growth / 100.0f) * 0.55f;
-  int stemTop = 133 - (int)(growth * 0.48f);
-  int stemX = 89;
-  uint16_t stemDark = rgb565(22, 86, 43);
-  uint16_t stemLight = rgb565(111, 163, 78);
-
-  // Main stem and branching nodes.
-  game.drawLine(stemX, 139, stemX, stemTop, stemDark);
-  game.drawLine(stemX + 1, 138, stemX + 1, stemTop + 1, stemLight);
-
-  if (stage >= 1) {
-    int y = 127 - (int)(growth * 0.13f);
-    game.drawLine(stemX, y + 7, 74, y + 1, stemDark);
-    drawFanLeaf(74, y + 1, size * 0.70f, -34);
-    game.drawLine(stemX, y + 7, 104, y + 1, stemDark);
-    drawFanLeaf(104, y + 1, size * 0.70f, 34);
-  }
-  if (stage >= 2) {
-    int y = 106 - (int)(growth * 0.10f);
-    game.drawLine(stemX, y + 8, 69, y + 2, stemDark);
-    drawFanLeaf(69, y + 2, size * 0.82f, -37);
-    game.drawLine(stemX, y + 8, 109, y + 2, stemDark);
-    drawFanLeaf(109, y + 2, size * 0.82f, 37);
-  }
-  if (stage >= 3) {
-    int y = 84 - (int)(growth * 0.06f);
-    game.drawLine(stemX, y + 6, 77, y + 1, stemDark);
-    drawFanLeaf(77, y + 1, size * 0.72f, -30);
-    game.drawLine(stemX, y + 6, 101, y + 1, stemDark);
-    drawFanLeaf(101, y + 1, size * 0.72f, 30);
-  }
-
-  // Top fan and small flower clusters appear as the plant matures.
-  drawFanLeaf(stemX, stemTop + 5, size * 0.88f, 0);
-  if (stage == 4) {
-    uint16_t bud = rgb565(83, 135, 67);
-    uint16_t budLight = rgb565(150, 173, 104);
-    for (int i = 0; i < 7; ++i) {
-      int bx = 83 + (i % 3) * 6;
-      int by = stemTop + 15 + (i / 3) * 5;
-      game.fillCircle(bx, by, 3, bud);
-      game.fillCircle(bx - 1, by - 1, 1, budLight);
-    }
-  }
-  // The large front pot is the last foreground layer, with a short visible
-  // stalk crossing the soil line to make the root point clear.
-  drawPot();
+  drawArtPlant(23, stage);
+  drawArtPlant(67, stage);
+  drawArtPlant(111, stage);
+  drawArtPlant(155, stage);
 }
 
 void drawGardenSidePanel() {
