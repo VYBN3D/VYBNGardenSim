@@ -1,4 +1,4 @@
-# Curaleaf Garden — Changelog
+# WinFlorida Garden Sim — Changelog
 
 Firmware versions for the 4" S3 and 2.8" S3 WinFlorida Garden Sim boards.
 Each tagged version publishes `.bin` files + `version.txt` on the
