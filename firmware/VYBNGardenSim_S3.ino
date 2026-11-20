@@ -437,7 +437,7 @@ void drawGardenActions();
 void waitForCutsceneContinue();
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v43"
+#define FW_VERSION "v44"
 #define FW_BOARD    "S3"
 #define FW_DATE    "Nov 20"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -7198,30 +7198,50 @@ void sleepUntilBootWake() {
   render();
 }
 
+// "GARDEN SIM" boot-splash subtext: custom bitmap (the built-in fonts are
+// 8px and 16px; this 12px render sits between them as a true subtext).
+static const uint8_t gsSimMask[90] PROGMEM = {   // 76x9, rows padded to 10 bytes
+  0x1E, 0x0C, 0x3F, 0x1F, 0x0F, 0xCC, 0x20, 0x78, 0x98, 0x60, 0x23, 0x0C,
+  0x21, 0x90, 0x88, 0x0C, 0x20, 0x8C, 0x98, 0x60, 0x41, 0x0E, 0x20, 0x90,
+  0xC8, 0x0A, 0x20, 0x84, 0x98, 0x60, 0x40, 0x12, 0x21, 0x90, 0x48, 0x0A,
+  0x20, 0xC0, 0x94, 0xA0, 0x47, 0x12, 0x3F, 0x10, 0x4F, 0xC9, 0x20, 0x78,
+  0x94, 0xA0, 0x41, 0x3F, 0x21, 0x90, 0x48, 0x09, 0x20, 0x04, 0x94, 0xA0,
+  0x41, 0x21, 0x20, 0x90, 0x48, 0x08, 0xA0, 0x84, 0x93, 0x20, 0x63, 0x21,
+  0x20, 0x90, 0x88, 0x08, 0x60, 0x84, 0x93, 0x20, 0x1C, 0x61, 0xA0, 0x9F,
+  0x0F, 0xC8, 0x60, 0x78, 0x93, 0x20
+};
+
+static void drawGsSubtext(int y) {
+  const int w = 76, h = 9, stride = 10;
+  const int x0 = SCREEN_W / 2 - w / 2;
+  for (int row = 0; row < h; ++row)
+    for (int col = 0; col < w; ++col) {
+      uint8_t packed = pgm_read_byte(&gsSimMask[row * stride + (col >> 3)]);
+      if (packed & (0x80 >> (col & 7)))
+        game.fillRect(x0 + col, y + row, 1, 1, 0x9EFB);
+    }
+}
+
 void showBootSplash() {
   // Solid black backdrop, then the leaf breathes via a small 72x72 sprite
   // blitted atomically each step - no erase-then-redraw flicker.
   game.fillScreen(TFT_BLACK);
-  game.setTextColor(TFT_WHITE, TFT_BLACK);
-  game.drawCentreString("VYBN", 160, 134, 4);
-  game.setTextColor(0x9EFB, TFT_BLACK);
-  game.drawCentreString("GARDEN SIM", 160, 176, 2);
+  drawGsSubtext(174);  // pale-blue GARDEN SIM subtext bitmap
   // Firmware tagline: tiny dim line under the title, handy after OTA swaps.
   game.setTextColor(0x630C, TFT_BLACK);
-  game.drawCentreString(FW_VERSION_FULL " - " FW_DATE, 160, 196, 1);
+  game.drawCentreString(FW_VERSION_FULL " - " FW_DATE, 160, 192, 1);
   presentFrame();
 
   TFT_eSprite spr(&canvas);  // panel-bound sprite; blitted into the scaled view
   // Logo block art scaled onto the 480x320 panel: 48 mask cells drawn with
-  // alternating 2/3 px blocks = 120x120 (the sprite must match, or the right
-  // and bottom cells — the N and the descenders — get clipped), at the scaled
-  // (124,50) anchor.
+  // alternating 3/4 px blocks = 160x160 (same 50%-of-height presence as the
+  // S28's 120x120 on its 240px panel), at the scaled (107,53) anchor.
   int cellX[48], cellY[48];
   int acc = 0;
-  for (int i = 0; i < 48; ++i) { cellX[i] = acc; acc += (i % 2) ? 3 : 2; }
+  for (int i = 0; i < 48; ++i) { cellX[i] = acc; acc += (i % 3) ? 3 : 4; }
   acc = 0;
-  for (int i = 0; i < 48; ++i) { cellY[i] = acc; acc += (i % 2) ? 3 : 2; }
-  spr.createSprite(120, 120);
+  for (int i = 0; i < 48; ++i) { cellY[i] = acc; acc += (i % 3) ? 3 : 4; }
+  spr.createSprite(160, 160);
   const int frames = 20;
   for (int i = 0; i < frames; ++i) {
     float t = (float)i / (float)frames;
@@ -7232,11 +7252,11 @@ void showBootSplash() {
       for (int col = 0; col < 48; ++col) {
         int bit = row * 48 + col;
         if (vybnScriptMask[bit >> 3] & (0x80 >> (bit & 7)))
-          spr.fillRect(cellX[col], cellY[row], (col % 2) ? 3 : 2,
-                       (row % 2) ? 3 : 2, rgb565(v - 18, v, v - 10));
+          spr.fillRect(cellX[col], cellY[row], (col % 3) ? 3 : 4,
+                       (row % 3) ? 3 : 4, rgb565(v - 18, v, v - 10));
       }
     }
-    spr.pushSprite(SX(124), SY(50));
+    spr.pushSprite(SX(107), SY(53));
     delay(80);
     audioPump();  // keep the boot chant's DMA fed while the logo breathes
   }

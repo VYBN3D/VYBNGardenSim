@@ -5,6 +5,14 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/VYBNGardenSim/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v44 — Boot splash redesign
+- The breathing VYBN script logo is now the splash centerpiece: enlarged
+  to 120x120 on the 2.8" board (160x160 on the 4" board) and centered
+- "GARDEN SIM" below it is a custom 12px bitmap subtext in the original
+  pale blue (0x9EFB) — the built-in fonts only offer 8px and 16px
+- The big "VYBN" wordmark text is gone from the splash; the firmware
+  version line stays at the bottom
+
 ## v43 — Header branding
 - The left corner of the header is plain text: big "VYBN" with small
   "GARDEN SIM" underneath it, in place of the old grower name. No logo
