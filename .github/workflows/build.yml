@@ -87,4 +87,4 @@ jobs:
           files: |
             bins/**/*.bin
             bins/version.txt
-          body: "OTA firmware for all three boards (4-inch S3, 2.8-inch S3, classic CYD). Devices check version.txt against their build tag and fetch the matching .bin."
+          body: "OTA firmware for the 4-inch S3 and 2.8-inch S3 boards. Devices check version.txt against their build tag and fetch the matching .bin."
