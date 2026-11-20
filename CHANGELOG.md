@@ -5,6 +5,25 @@ Each tagged version publishes `.bin` files + `version.txt` on the
 [Releases page](https://github.com/VYBN3D/curaleaf-garden/releases);
 boards update over the air via **Options → CHECK UPDATES → INSTALL**.
 
+## v38 — Boot chant, sampled theme loop, hash wash room, bigger sell modal
+- **Boot chant**: a crowd-chant sample (uploaded MP3, decoded on the Mac to
+  16 kHz mono, IMA ADPCM 4-bit ~24 KB) embedded in flash plays once over the
+  boot splash, then hands over to the theme
+- **New in-game theme**: the old placeholder chiptune melody is removed;
+  the game music is now the user's 92 BPM two-bar loop, ADPCM-compressed
+  (~42 KB) and looping seamlessly from flash — all SFX jingles (coin blip,
+  death, harvest fanfare, pest alarm) stay and mix over it
+- **Hash room wash picker**: the MARKET button in the secret hash room is
+  now RUN A WASH — a sell-modal-style picker with big < > arrows and cards
+  to choose which stash strain to wash; one run washes 2 trimmed jars into
+  1 hash unit of the same strain (quality blended), shows the flower-vs-hash
+  value comparison on the card, and finishes with the hash-wash cutscene
+- **Bigger strain modal**: the SELL FLOWER / SELL HASH strain modal is
+  larger (y58-205) with a much bigger BACK (72x26), taller arrows/card and
+  a 28px action bar; the wash picker uses the same layout
+- Version string fixed on the 2.8" board (it still reported v34)
+- Both boards compile at ~42% of app storage
+
 ## v37 — SD-art look without an SD card
 - **Garden room now matches the PLANT BMPs even with no microSD**: the
   vector fallback was rebuilt from pixel analysis of the SD art — same

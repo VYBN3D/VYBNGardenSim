@@ -412,9 +412,9 @@ void drawGardenActions();
 void waitForCutsceneContinue();
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v36"
+#define FW_VERSION "v38"
 #define FW_BOARD    "S3"
-#define FW_DATE    "Nov 19"
+#define FW_DATE    "Nov 20"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
 
 // --- 8-bit soundtrack -------------------------------------------------------
@@ -434,21 +434,8 @@ struct ChipNote { uint16_t freq; uint8_t steps; };  // freq 0 = rest; steps in 1
 struct ChipSong { const ChipNote* notes; uint16_t count; uint16_t stepMs; bool loop; };
 struct DrumLoop { const ChipNote* notes; uint16_t count; uint16_t stepMs; };
 
-// Indie hip-hop inspired garden theme: laid-back boom-bap groove (~94 BPM,
-// 160 ms sixteenths) in A minor — kick/snare bass hits, hat ticks, and a
-// sparse pentatonic lead answering the bassline.
-const ChipNote gardenThemeNotes[] PROGMEM = {
-  // Bar 1: A bass groove
-  {110,2},{1047,1},{0,1},{165,2},{1047,1},{0,1},{110,2},{1047,1},{0,1},{165,2},{1047,1},{0,1},
-  // Bar 2: drop to G
-  {98,2},{1047,1},{0,1},{165,2},{1047,1},{0,1},{98,2},{1047,1},{0,1},{165,2},{1047,1},{0,1},
-  // Bar 3: lead answers over the kick
-  {131,2},{440,1},{0,1},{165,2},{392,1},{0,1},{110,2},{1047,1},{0,1},{165,2},{440,1},{0,1},
-  // Bar 4: resolve and breathe
-  {110,2},{392,1},{0,1},{165,2},{330,1},{0,1},{98,2},{1047,1},{0,1},{165,2},{0,2},
-};
-const ChipSong gardenTheme = {gardenThemeNotes,
-    sizeof(gardenThemeNotes) / sizeof(ChipNote), 160, true};
+// The placeholder chiptune garden theme is gone; the in-game music is now a
+// sampled loop streamed from flash through the PCM voice in audioSynthChunk().
 
 // Plant lost: slow descending minor phrase.
 const ChipNote deathJingleNotes[] PROGMEM = {
@@ -479,7 +466,7 @@ const ChipSong coinBlip = {coinBlipNotes,
     sizeof(coinBlipNotes) / sizeof(ChipNote), 70, false};
 
 const ChipSong* activeSong = nullptr;
-const ChipSong* backgroundSong = &gardenTheme;
+const ChipSong* backgroundSong = nullptr;
 uint16_t songPos = 0;
 unsigned long noteEnd = 0;
 
@@ -700,6 +687,81 @@ static void audioInit() {
 }
 
 // Fill the DMA ring: mix the lead and drum square voices into 16-bit stereo.
+
+// --- PCM sample voices -------------------------------------------------------
+// Boot chant (one-shot crowd chant) then the theme loop, both IMA ADPCM,
+// 4-bit, 16 kHz mono, stored in flash. One decoder chain serves whichever
+// stream is active; when the chant ends the theme takes over and loops.
+#include "boot_chant.h"
+#include "theme_loop.h"
+
+static const uint8_t PCM_NONE = 0, PCM_CHANT = 1, PCM_THEME = 2;
+static uint8_t pcmStream = PCM_NONE;
+static uint32_t pcmPos = 0;
+static int32_t pcmPredict = 0;
+static int pcmIndex = 0;
+static bool pcmHighNib = false;
+
+static const int16_t pcmStepTable[89] = {
+  7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,
+  80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,
+  494,544,598,658,724,796,876,963,1060,1166,1282,1410,1552,1707,1878,2066,
+  2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,
+  8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,
+  27086,29794,32767};
+static const int8_t pcmIndexTable[16] = {-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8};
+
+static void pcmStart(uint8_t which) {
+  pcmStream = which;
+  pcmPos = 0;
+  pcmPredict = 0;
+  pcmIndex = 0;
+  pcmHighNib = false;
+}
+
+void playBootChant() {
+  if (!audioTx || musicVolume == 0) return;
+  pcmStart(PCM_CHANT);
+}
+
+// Decode one ADPCM nibble of the active stream into a PCM sample.
+static inline int32_t pcmNextSample() {
+  for (;;) {
+    const uint32_t frames =
+        pcmStream == PCM_CHANT ? bootChantFrames : themeFrames;
+    if (pcmPos < frames) break;
+    if (pcmStream == PCM_CHANT) {
+      if (themeFrames) { pcmStart(PCM_THEME); continue; }
+      pcmStream = PCM_NONE;
+      return 0;
+    }
+    if (!frames) { pcmStream = PCM_NONE; return 0; }
+    pcmPos = 0;                     // theme loops forever
+    pcmPredict = 0;
+    pcmIndex = 0;
+    pcmHighNib = false;
+    break;
+  }
+  const uint8_t *data = pcmStream == PCM_CHANT ? bootChantData : themeData;
+  uint8_t b = pgm_read_byte(&data[pcmPos >> 1]);
+  uint8_t n = pcmHighNib ? (b >> 4) : (b & 0xF);
+  pcmHighNib = !pcmHighNib;
+  ++pcmPos;
+  int step = pcmStepTable[pcmIndex];
+  int32_t diff = step >> 3;
+  if (n & 4) diff += step;
+  if (n & 2) diff += step >> 2;
+  if (n & 1) diff += step >> 3;
+  if (n & 8) diff = -diff;
+  pcmPredict += diff;
+  if (pcmPredict > 32767) pcmPredict = 32767;
+  if (pcmPredict < -32768) pcmPredict = -32768;
+  pcmIndex += pcmIndexTable[n & 7];
+  if (pcmIndex < 0) pcmIndex = 0;
+  if (pcmIndex > 88) pcmIndex = 88;
+  return pcmPredict;
+}
+
 static int16_t stereoBuf[480 * 2];
 static void audioSynthChunk() {
   const uint32_t PHASE_STEP = (uint32_t)(4294967296.0 / AUDIO_RATE);
@@ -714,6 +776,7 @@ static void audioSynthChunk() {
       int damp = pcmDrumFreq > 400 ? 6000 : (pcmDrumFreq <= 120 ? 12000 : 9000);
       s += (drumPhase & 0x80000000UL) ? -damp : damp;
     }
+    if (pcmStream) s += (pcmNextSample() * 9) / 10;   // PCM sample voice
     if (s > 32767) s = 32767;
     else if (s < -32768) s = -32768;
     stereoBuf[2 * i] = stereoBuf[2 * i + 1] = (int16_t)s;
@@ -889,6 +952,11 @@ uint8_t sendStashStrain = 0;        // stash-jar strain picked on the same scree
 uint8_t sendHashStrain = 0;         // hash-jar strain picked on the same screen
 uint8_t sendConfirmItem = 0;        // product armed for the SEND IT? panel
 uint8_t marketSellStrain = 0;   // strain picked in the sell submenu
+
+// ---- Hash room wash picker: wash trimmed stash flower into hash ----
+bool washOpen = false;
+bool washConfirm = false;
+uint8_t washStrain = 0;
 uint8_t marketSellMode = 0;     // 0 none, 1/2 flower sell-1/sell-all, 3/4 hash
 uint8_t marketSellCount = 0;    // stocked strains for the active mode
 uint8_t marketSellList[STRAIN_COUNT];
@@ -991,6 +1059,16 @@ uint8_t nextHashStrain(uint8_t from, int dir) {
   for (uint8_t step = 0; step < STRAIN_COUNT; ++step) {
     from = (from + STRAIN_COUNT + dir) % STRAIN_COUNT;
     if (hashByStrain[from]) return from;
+  }
+  return from;
+}
+
+// Next strain (direction) holding at least 2 trimmed jars — a wash run's
+// minimum input.
+uint8_t nextWashStrain(uint8_t from, int dir) {
+  for (uint8_t step = 0; step < STRAIN_COUNT; ++step) {
+    from = (from + STRAIN_COUNT + dir) % STRAIN_COUNT;
+    if (stashByStrain[from] >= 2) return from;
   }
   return from;
 }
@@ -3710,7 +3788,7 @@ void drawHashRoomPage() {
   game.setTextColor(TEXT_DIM, PANEL);
   game.drawCentreString("Choose HASH after a room is mature.", 160, 123, 1);
   drawButton(22, 165, 132, 30, "GARDEN", ACCENT_DARK);
-  drawButton(166, 165, 132, 30, "MARKET", ACCENT_DARK);
+  drawButton(166, 165, 132, 30, "RUN A WASH", ACCENT_DARK);
 }
 
 void drawHarvestChoicePage() {
@@ -4110,7 +4188,7 @@ void render(bool presentNow) {
         case SUPPLIES: drawSuppliesPage(); break;
         case MARKET: drawMarketPage(); break;
         case STASH: drawStashPage(); break;
-        case HASH_ROOM: drawHashRoomPage(); break;
+        case HASH_ROOM: drawHashRoomPage(); if (washOpen) drawWashModal(); break;
         case HARVEST_SELECT: drawHarvestChoicePage(); break;
         case TRIM_ROOM: drawTrimPage(); break;
         case NEARBY: drawNearbyPage(); break;
@@ -4547,22 +4625,22 @@ static void marketSellPriceText(char *out, size_t len) {
 
 static void drawSellStrainModal() {
   bool flower = marketSellMode <= 2;
-  game.fillRoundRect(5, 72, 310, 133, 8, PANEL);
-  game.drawRoundRect(5, 72, 310, 133, 8, PANEL_LIGHT);
+  game.fillRoundRect(3, 58, 314, 148, 8, PANEL);
+  game.drawRoundRect(3, 58, 314, 148, 8, PANEL_LIGHT);
   // BACK sits top-right of the box, above the strain card.
-  drawButton(243, 74, 66, 20, "BACK", PANEL_LIGHT);
+  drawButton(242, 61, 72, 26, "BACK", PANEL_LIGHT);
   game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawCentreString(flower ? "SELL FLOWER" : "SELL HASH", 124, 77, 2);
+  game.drawCentreString(flower ? "SELL FLOWER" : "SELL HASH", 120, 64, 2);
   if (!marketSellCount) {
     game.setTextColor(TEXT_DIM, PANEL);
-    game.drawCentreString("Nothing to sell here", 160, 130, 1);
+    game.drawCentreString("Nothing to sell here", 160, 124, 1);
     return;
   }
   uint8_t s = marketSellStrain;
   if (marketSellConfirm) {
     // One-tap confirmation: nothing sells until YES, SELL IT.
     game.setTextColor(TEXT_MAIN, PANEL);
-    game.drawCentreString("ARE YOU SURE?", 160, 100, 2);
+    game.drawCentreString("ARE YOU SURE?", 160, 102, 2);
     char detail[44];
     if (marketSellMode == 1)
       snprintf(detail, sizeof(detail), "Sell 1 %s jar - $%u", strainNames[marketSellStrain],
@@ -4578,30 +4656,30 @@ static void drawSellStrainModal() {
       snprintf(detail, sizeof(detail), "Sell all %s hash (x%u) - $%u", strainNames[marketSellStrain],
                hashByStrain[marketSellStrain],
                (uint32_t)hashByStrain[marketSellStrain] * hashUnitPrice(marketSellStrain));
-    game.drawCentreString(detail, 160, 126, 1);
-    drawButton(5, 162, 150, 26, "BACK", PANEL_LIGHT);
-    drawButton(163, 162, 152, 26, "YES, SELL IT", RED, TFT_WHITE);
+    game.drawCentreString(detail, 160, 128, 1);
+    drawButton(5, 172, 150, 28, "BACK", PANEL_LIGHT);
+    drawButton(163, 172, 152, 28, "YES, SELL IT", RED, TFT_WHITE);
     return;
   }
   // One giant card per stashed strain, flanked by big < > arrows.
-  drawButton(5, 100, 48, 64, "<", ACCENT_DARK);
-  drawButton(257, 100, 48, 64, ">", ACCENT_DARK);
-  game.fillRoundRect(57, 100, 196, 64, 8, PANEL);
-  game.drawRoundRect(57, 100, 196, 64, 8, ACCENT);
+  drawButton(5, 96, 48, 72, "<", ACCENT_DARK);
+  drawButton(257, 96, 48, 72, ">", ACCENT_DARK);
+  game.fillRoundRect(57, 96, 196, 72, 8, PANEL);
+  game.drawRoundRect(57, 96, 196, 72, 8, ACCENT);
   int nameFont = strlen(strainNames[s]) > 14 ? 1 : 2;
   game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawCentreString(strainNames[s], 155, nameFont == 2 ? 108 : 112, nameFont);
+  game.drawCentreString(strainNames[s], 155, nameFont == 2 ? 104 : 108, nameFont);
   game.setTextColor(GOLD, PANEL);
   char info[40];
   if (flower)
     snprintf(info, sizeof(info), "x%u jars - $%u each", stashByStrain[s], flowerUnitPrice(s));
   else
     snprintf(info, sizeof(info), "x%u hash - $%u each", hashByStrain[s], hashUnitPrice(s));
-  game.drawCentreString(info, 155, 134, 1);
+  game.drawCentreString(info, 155, 130, 1);
   // Full-width SELL bar under the card.
   char price[40];
   marketSellPriceText(price, sizeof(price));
-  drawButton(5, 172, 310, 26, price, ACCENT_DARK, TFT_WHITE);
+  drawButton(5, 172, 310, 28, price, ACCENT_DARK, TFT_WHITE);
 }
 
 // Arrow feedback without a full-page render: repaint only the strain card
@@ -4609,30 +4687,30 @@ static void drawSellStrainModal() {
 static void redrawSellStrainCard() {
   uint8_t s = marketSellStrain;
   bool flower = marketSellMode <= 2;
-  game.fillRoundRect(57, 100, 196, 64, 8, PANEL);
-  game.drawRoundRect(57, 100, 196, 64, 8, ACCENT);
+  game.fillRoundRect(57, 96, 196, 72, 8, PANEL);
+  game.drawRoundRect(57, 96, 196, 72, 8, ACCENT);
   int nameFont = strlen(strainNames[s]) > 14 ? 1 : 2;
   game.setTextColor(TEXT_MAIN, PANEL);
-  game.drawCentreString(strainNames[s], 155, nameFont == 2 ? 108 : 112, nameFont);
+  game.drawCentreString(strainNames[s], 155, nameFont == 2 ? 104 : 108, nameFont);
   game.setTextColor(GOLD, PANEL);
   char info[40];
   if (flower)
     snprintf(info, sizeof(info), "x%u jars - $%u each", stashByStrain[s], flowerUnitPrice(s));
   else
     snprintf(info, sizeof(info), "x%u hash - $%u each", hashByStrain[s], hashUnitPrice(s));
-  game.drawCentreString(info, 155, 134, 1);
+  game.drawCentreString(info, 155, 130, 1);
   char price[40];
   marketSellPriceText(price, sizeof(price));
-  game.fillRoundRect(5, 172, 310, 26, 6, ACCENT_DARK);
-  game.drawRoundRect(5, 172, 310, 26, 6, PANEL_LIGHT);
+  game.fillRoundRect(5, 172, 310, 28, 6, ACCENT_DARK);
+  game.drawRoundRect(5, 172, 310, 28, 6, PANEL_LIGHT);
   game.setTextColor(TFT_WHITE, ACCENT_DARK);
-  game.drawCentreString(price, 160, 177, 1);
+  game.drawCentreString(price, 160, 179, 1);
 }
 
 
 static void touchMarketSellModal(int x, int y) {
   if (marketSellConfirm) {
-    if (y >= 162 && y < 188) {
+    if (y >= 172 && y < 200) {
       if (x < 160) {
         marketSellConfirm = false;         // BACK — nothing sold
       } else {
@@ -4650,11 +4728,11 @@ static void touchMarketSellModal(int x, int y) {
     render();
     return;
   }
-  if (y >= 74 && y < 94 && x >= 243) {
+  if (y >= 61 && y < 87 && x >= 242) {
     marketSellMode = 0;                    // BACK, top-right of the box
     marketSellConfirm = false;
     render();
-  } else if (y >= 100 && y < 164) {
+  } else if (y >= 96 && y < 168) {
     if (x < 57) {   // giant < arrow: previous stashed strain
       marketSellStrain = marketSellMode <= 2 ? nextStashStrain(marketSellStrain, -1)
                                              : nextHashStrain(marketSellStrain, -1);
@@ -4664,12 +4742,116 @@ static void touchMarketSellModal(int x, int y) {
                                              : nextHashStrain(marketSellStrain, 1);
       redrawSellStrainCard();
     }
-  } else if (y >= 172 && y < 198) {
+  } else if (y >= 172 && y < 200) {
     marketSellConfirm = true;              // arm the ARE YOU SURE? panel
     render();
   }
 }
 
+
+// ---- Hash room wash picker -------------------------------------------------
+// One run washes 2 trimmed flower jars from a stash strain into 1 hash unit
+// of the same strain, blended with that strain's existing hash quality.
+
+static void runWash() {
+  uint8_t s = washStrain;
+  if (s >= STRAIN_COUNT || stashByStrain[s] < 2) return;
+  stashByStrain[s] -= 2;
+  hashQualityByStrain[s] = blendQuality(hashQualityByStrain[s], hashByStrain[s],
+                                        stashQualityByStrain[s], 2);
+  hashByStrain[s] += 1;
+  washOpen = false;
+  washConfirm = false;
+  saveGame();
+  hashAnimationRequested = true;   // play the hash-wash cutscene
+  lastFarmerVisitAt = millis();
+}
+
+// Strain card body shared by the full modal draw and the arrow-only refresh.
+static void washCardBody() {
+  uint8_t s = washStrain;
+  game.fillRoundRect(57, 96, 196, 72, 8, PANEL);
+  game.drawRoundRect(57, 96, 196, 72, 8, ACCENT);
+  int nameFont = strlen(strainNames[s]) > 14 ? 1 : 2;
+  game.setTextColor(TEXT_MAIN, PANEL);
+  game.drawCentreString(strainNames[s], 155, nameFont == 2 ? 102 : 106, nameFont);
+  game.setTextColor(GOLD, PANEL);
+  char info[44];
+  snprintf(info, sizeof(info), "x%u jars - $%u each", stashByStrain[s], flowerUnitPrice(s));
+  game.drawCentreString(info, 155, 122, 1);
+  game.setTextColor(TEXT_DIM, PANEL);
+  snprintf(info, sizeof(info), "SELL 2 JARS: $%u", (uint32_t)2 * flowerUnitPrice(s));
+  game.drawCentreString(info, 155, 136, 1);
+  snprintf(info, sizeof(info), "WASHED AS HASH: $%u", hashUnitPrice(s));
+  game.drawCentreString(info, 155, 148, 1);
+}
+
+static void drawWashModal() {
+  game.fillRoundRect(3, 58, 314, 148, 8, PANEL);
+  game.drawRoundRect(3, 58, 314, 148, 8, PANEL_LIGHT);
+  drawButton(242, 61, 72, 26, "BACK", PANEL_LIGHT);
+  game.setTextColor(TEXT_MAIN, PANEL);
+  game.drawCentreString("WASH TRIMMED FLOWER", 120, 64, 1);
+  bool anyWashable = false;
+  for (uint8_t i = 0; i < STRAIN_COUNT; ++i)
+    if (stashByStrain[i] >= 2) { anyWashable = true; break; }
+  if (!anyWashable) {
+    game.setTextColor(TEXT_DIM, PANEL);
+    game.drawCentreString("Need 2+ jars of a strain", 160, 120, 1);
+    game.drawCentreString("Harvest FLOWER and trim first", 160, 134, 1);
+    return;
+  }
+  if (washConfirm) {
+    game.setTextColor(TEXT_MAIN, PANEL);
+    game.drawCentreString("ARE YOU SURE?", 160, 102, 2);
+    char detail[48];
+    snprintf(detail, sizeof(detail), "Wash 2 %s jars into 1 hash?", strainNames[washStrain]);
+    game.drawCentreString(detail, 160, 128, 1);
+    drawButton(5, 172, 150, 28, "BACK", PANEL_LIGHT);
+    drawButton(163, 172, 152, 28, "YES, WASH IT", RED, TFT_WHITE);
+    return;
+  }
+  // One giant strain card flanked by big < > arrows, sell-modal style.
+  drawButton(5, 96, 48, 72, "<", ACCENT_DARK);
+  drawButton(257, 96, 48, 72, ">", ACCENT_DARK);
+  washCardBody();
+  // Full-width WASH bar under the card.
+  drawButton(5, 172, 310, 28, "WASH 2 JARS -> 1 HASH", ACCENT_DARK, TFT_WHITE);
+}
+
+// Arrow feedback without a full-page render.
+static void redrawWashCard() { washCardBody(); }
+
+static void touchWashModal(int x, int y) {
+  if (washConfirm) {
+    if (y >= 172 && y < 200) {
+      if (x < 160) {
+        washConfirm = false;             // BACK — nothing washed
+        render();
+      } else {
+        runWash();
+        render();
+      }
+    }
+    return;
+  }
+  if (y >= 61 && y < 87 && x >= 242) {
+    washOpen = false;                    // BACK, top-right of the box
+    washConfirm = false;
+    render();
+  } else if (y >= 96 && y < 168) {
+    if (x < 57) {                        // giant < arrow
+      washStrain = nextWashStrain(washStrain, -1);
+      redrawWashCard();
+    } else if (x >= 253) {               // giant > arrow
+      washStrain = nextWashStrain(washStrain, 1);
+      redrawWashCard();
+    }
+  } else if (y >= 172 && y < 200) {
+    washConfirm = true;                  // arm the ARE YOU SURE? panel
+    render();
+  }
+}
 
 void prepareDemoHarvest() {
   plantActive = true;
@@ -6114,7 +6296,17 @@ void handleTouch(int x, int y) {
       }
       break;
     case HASH_ROOM:
-      if (y >= 165 && y < 199) page = (x < 160) ? GARDEN : MARKET;
+      if (washOpen) { touchWashModal(x, y); return; }
+      if (y >= 165 && y < 199) {
+        if (x < 160) {
+          page = GARDEN;
+        } else {
+          washOpen = true;               // RUN A WASH picker
+          washConfirm = false;
+          washStrain = nextWashStrain((uint8_t)(washStrain + STRAIN_COUNT - 1), 1);
+          render();
+        }
+      }
       break;
     case HARVEST_SELECT:
       if (y >= 78 && y < 130 && x >= 240) finishHarvest(false);
@@ -6852,6 +7044,7 @@ void showBootSplash() {
     }
     spr.pushSprite(SX(124), SY(50));
     delay(80);
+    audioPump();  // keep the boot chant's DMA fed while the logo breathes
   }
   spr.deleteSprite();
 }
@@ -6914,7 +7107,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: clean intro chrome\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: boot chant + sampled theme loop\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
@@ -6959,6 +7152,7 @@ void setup() {
 
   initSdAndTouch();
   audioInit();         // ES8311 codec + I2S (Wire is up now)
+  playBootChant();     // crowd chant plays over the boot splash
   startNearbyRadio();
   randomSeed((uint32_t)micros() ^ (uint32_t)analogRead(34));
   loadTouchCalibration();
