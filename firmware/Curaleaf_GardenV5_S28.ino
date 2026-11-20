@@ -272,7 +272,6 @@ unsigned long waterAnimNextAt = 0;
 bool farmerOverlayActive = false;       // non-blocking farmer visit overlay
 unsigned long farmerOverlayUntil = 0;
 bool overlayDirty = false;              // garden repaint landed under the overlay
-TFT_eSprite overlaySpr = TFT_eSprite(&canvas);  // atomic pop-out blit buffer
 TFT_eSprite frameBuf = TFT_eSprite(&canvas);    // full-frame render buffer
 bool frameBufferActive = false;                 // presentFrame pushes the buffer
 bool smokeAnimationRequested = false;
@@ -4779,146 +4778,22 @@ void startFarmerOverlay() {
   presentFrame();
 }
 
-// ---- v17: atomic pop-out ---------------------------------------------------
-// The old pop-out repainted the covered art region row by row straight to the
-// panel — a visible progressive rebuild flash every time the farmer left.
-// These helpers rebuild just the covered region into an offscreen sprite
-// (PSRAM-backed on these boards) and blit it in ONE push, so the swap from
-// "farmer standing there" to "clean garden" is a single atomic frame. They
-// return false when the SD art or the sprite is unavailable, and the caller
-// falls back to the old repaint path.
-bool restoreGardenArtBlit() {
-  if (!sdMounted || !plantActive) return false;
-  char filename[16];
-  snprintf(filename, sizeof(filename), "/PLANT%d.BMP", stageForGrowth());
-  bool drawn = false;
-  // Farmer + speech bubble cover the art region x55..178, y30..172.
-  const int px0 = SX(55), px1 = SX(178), py0 = SY(30), py1 = SY(172);
-  const int sprW = px1 - px0, sprH = py1 - py0;
-  switchToSdBus();
-  File file = SD.open(filename, FILE_READ);
-  if (file) {
-    file.seek(10);
-    uint32_t pixelOffset = readLE32(file);
-    file.seek(18);
-    int32_t width = (int32_t)readLE32(file);
-    int32_t height = (int32_t)readLE32(file);
-    file.seek(28);
-    uint16_t bitsPerPixel = readLE16(file);
-    uint32_t compression = readLE32(file);
-    if (width == ART_W && abs(height) == ART_H &&
-        bitsPerPixel == 24 && compression == 0) {
-      uint32_t rowBytes = ((uint32_t)width * 3 + 3) & ~3UL;
-      file.seek(pixelOffset);
-      if (overlaySpr.createSprite(sprW, sprH)) {
-        // Sprite buffers hold pixels in panel wire order (that is how the
-        // sprite draw functions store them, and pushSprite sends the buffer
-        // raw) — so swap on the way IN, not on the way out.
-        overlaySpr.setSwapBytes(true);
-        drawn = true;
-        for (int row = 0; row < ART_H && drawn; ++row) {
-          if (file.read(bmpRow, rowBytes) != rowBytes) { drawn = false; break; }
-          int screenY = height > 0 ? (ART_H - 1 - row) : row;
-          for (int col = 0; col < ART_W; ++col)
-            rgbRow[col] = rgb565(bmpRow[col * 3 + 2], bmpRow[col * 3 + 1],
-                                 bmpRow[col * 3 + 0]);
-          for (int col = 0; col < ART_W; ++col) {
-            int a = SX(col), b = SX(col + 1);
-            for (int px = a; px < b; ++px) panelRow[px] = rgbRow[col];
-          }
-          int pyA = SY(HEADER_H + screenY), pyB = SY(HEADER_H + screenY + 1);
-          for (int py = pyA; py < pyB; ++py) {
-            if (py < py0 || py >= py1) continue;
-            overlaySpr.pushImage(0, py - py0, sprW, 1, &panelRow[px0]);
-          }
-        }
-      }
-    }
-    file.close();
-  }
-  switchToTouchBus();
-  if (drawn) {
-    // pushSprite sends the sprite buffer raw (it forces the panel swap off),
-    // and the buffer now holds wire-order pixels, so colours come out right.
-    overlaySpr.pushSprite(px0, py0);
-  }
-  overlaySpr.deleteSprite();
-  return drawn;
-}
-
-bool restorePlantViewArtBlit() {
-  if (!sdMounted || !plantActive) return false;
-  char filename[16];
-  snprintf(filename, sizeof(filename), "/PLANT%d.BMP", stageForGrowth());
-  bool drawn = false;
-  // The overlay covers x180..314, y79..209 on the fullscreen view.
-  const int px0 = SX(180), px1 = SX(314), py0 = SY(79), py1 = SY(209);
-  const int sprW = px1 - px0, sprH = py1 - py0;
-  switchToSdBus();
-  File file = SD.open(filename, FILE_READ);
-  if (file) {
-    file.seek(10);
-    uint32_t pixelOffset = readLE32(file);
-    file.seek(18);
-    int32_t width = (int32_t)readLE32(file);
-    int32_t height = (int32_t)readLE32(file);
-    file.seek(28);
-    uint16_t bitsPerPixel = readLE16(file);
-    uint32_t compression = readLE32(file);
-    if (width == ART_W && abs(height) == ART_H &&
-        bitsPerPixel == 24 && compression == 0) {
-      uint32_t rowBytes = ((uint32_t)width * 3 + 3) & ~3UL;
-      file.seek(pixelOffset);
-      if (overlaySpr.createSprite(sprW, sprH)) {
-        overlaySpr.setSwapBytes(true);   // store wire-order pixels (see above)
-        drawn = true;
-        for (int row = 0; row < ART_H && drawn; ++row) {
-          if (file.read(bmpRow, rowBytes) != rowBytes) { drawn = false; break; }
-          for (int col = 0; col < ART_W; ++col) {
-            uint8_t b = bmpRow[col * 3 + 0];
-            uint8_t g = bmpRow[col * 3 + 1];
-            uint8_t r = bmpRow[col * 3 + 2];
-            rgbRow[col] = rgb565(r, g, b);
-            int x0 = SX((col * SCREEN_W) / ART_W);
-            int x1 = SX(((col + 1) * SCREEN_W) / ART_W);
-            for (int x = x0; x < x1; ++x) scaledPlantRow[x] = rgbRow[col];
-          }
-          int screenY = height > 0 ? ART_H - 1 - row : row;
-          int y0 = (screenY * SCREEN_H) / ART_H;
-          int y1 = ((screenY + 1) * SCREEN_H) / ART_H;
-          int pyA = SY(y0), pyB = SY(y1);
-          for (int py = pyA; py < pyB; ++py) {
-            if (py < py0 || py >= py1) continue;
-            overlaySpr.pushImage(0, py - py0, sprW, 1, &scaledPlantRow[px0]);
-          }
-        }
-      }
-    }
-    file.close();
-  }
-  switchToTouchBus();
-  if (drawn) {
-    overlaySpr.pushSprite(px0, py0);
-  }
-  overlaySpr.deleteSprite();
-  return drawn;
-}
-
+// The covered regions are repainted into the frame buffer and pushed in one
+// atomic pass, so the buffer and the panel always agree again afterwards.
 void restoreFarmerVisitArt() {
-  // The covered regions are repainted 1:1 (GRAM read-back is unreliable).
   if (page == GARDEN) {
-    if (!restoreGardenArtBlit()) drawPlant();   // blit failed: old slow path
+    drawPlant();             // repaint the covered art region into the buffer
     drawGardenZoomChip();    // the bubble covered the chip's right edge
     drawGardenSidePanel();   // ...and reached into the stats panel
   } else if (page == PLANT_VIEW) {
-    if (!restorePlantViewArtBlit()) {
-      if (!drawPlantBitmapFullScreenRegion(180, 79, 314, 209)) {
-        restoreFullScreenFallbackRegion();
-      }
+    if (!drawPlantBitmapFullScreenRegion(180, 79, 314, 209)) {
+      restoreFullScreenFallbackRegion();
     }
   } else {
     render();   // page changed mid-overlay: a clean repaint clears him
+    return;
   }
+  presentFrame();
 }
 
 void beginCutsceneScene() {
