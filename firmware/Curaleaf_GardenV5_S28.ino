@@ -414,7 +414,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v31"
+#define FW_VERSION "v32"
 #define FW_BOARD    "S28"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -3844,43 +3844,38 @@ void drawNearbyPage() {
       strlcpy(target, "Pick an online player first", sizeof(target));
     }
     drawPageTitle("SEND SUPPLIES", target);
-    // Full-width seeds card: < > pick the strain, tap the card to send.
+    // Picker rows: big arrows on the card edges pick the strain; the big
+    // SEND button in the middle is a separate, deliberate tap.
     bool seedsReady = seedsByStrain[sendSeedStrain] >= 4 && selectedNearbyPeerValid();
     game.fillRoundRect(5, 70, 310, 34, 5, PANEL);
     game.drawRoundRect(5, 70, 310, 34, 5, seedsReady ? ACCENT : PANEL_LIGHT);
-    game.setTextColor(TEXT_MAIN, PANEL);
-    game.drawString("SEEDS +4", 14, 75, 2);
-    drawButton(116, 75, 26, 19, "<", PANEL_LIGHT);
-    drawButton(144, 75, 26, 19, ">", PANEL_LIGHT);
+    drawButton(9, 74, 28, 26, "<", PANEL_LIGHT);
+    drawButton(283, 74, 28, 26, ">", PANEL_LIGHT);
     char seedLine[34];
-    snprintf(seedLine, sizeof(seedLine), "%s x%u", strainNames[sendSeedStrain],
+    snprintf(seedLine, sizeof(seedLine), "SEND %s x%u", strainNames[sendSeedStrain],
              seedsByStrain[sendSeedStrain]);
-    game.setTextColor(seedsReady ? GOLD : TEXT_DIM, PANEL);
-    game.drawRightString(seedLine, 306, 81, 1);
-    // Flower jar + hash jar pickers share the second row; card taps arm the
-    // SEND IT? confirmation panel instead of gifting right away.
+    drawButton(41, 74, 238, 26, seedLine,
+               seedsReady ? ACCENT_DARK : PANEL_LIGHT,
+               seedsReady ? TFT_WHITE : TEXT_DIM);
+    // Flower jar + hash jar rows: arrows pick, SEND arms the confirm panel.
     bool stashReady = stashByStrain[sendStashStrain] > 0 && selectedNearbyPeerValid();
     bool hashReady = hashByStrain[sendHashStrain] > 0 && selectedNearbyPeerValid();
     game.fillRoundRect(5, 108, 152, 34, 5, PANEL);
     game.drawRoundRect(5, 108, 152, 34, 5, stashReady ? ACCENT : PANEL_LIGHT);
-    game.setTextColor(TEXT_MAIN, PANEL);
-    game.drawString("FLOWER JAR", 13, 113, 1);
-    drawButton(117, 111, 18, 14, "<", PANEL_LIGHT);
-    drawButton(137, 111, 18, 14, ">", PANEL_LIGHT);
-    snprintf(seedLine, sizeof(seedLine), "%s x%u", strainNames[sendStashStrain],
-             stashByStrain[sendStashStrain]);
-    game.setTextColor(stashReady ? GOLD : TEXT_DIM, PANEL);
-    game.drawRightString(seedLine, 148, 128, 1);
+    drawButton(9, 112, 22, 26, "<", PANEL_LIGHT);
+    drawButton(131, 112, 22, 26, ">", PANEL_LIGHT);
+    snprintf(seedLine, sizeof(seedLine), "SEND %s", strainNames[sendStashStrain]);
+    drawButton(33, 112, 96, 26, seedLine,
+               stashReady ? ACCENT_DARK : PANEL_LIGHT,
+               stashReady ? TFT_WHITE : TEXT_DIM);
     game.fillRoundRect(163, 108, 152, 34, 5, PANEL);
     game.drawRoundRect(163, 108, 152, 34, 5, hashReady ? ACCENT : PANEL_LIGHT);
-    game.setTextColor(TEXT_MAIN, PANEL);
-    game.drawString("HASH JAR", 171, 113, 1);
-    drawButton(275, 111, 18, 14, "<", PANEL_LIGHT);
-    drawButton(295, 111, 18, 14, ">", PANEL_LIGHT);
-    snprintf(seedLine, sizeof(seedLine), "%s x%u", strainNames[sendHashStrain],
-             hashByStrain[sendHashStrain]);
-    game.setTextColor(hashReady ? GOLD : TEXT_DIM, PANEL);
-    game.drawRightString(seedLine, 306, 128, 1);
+    drawButton(167, 112, 22, 26, "<", PANEL_LIGHT);
+    drawButton(289, 112, 22, 26, ">", PANEL_LIGHT);
+    snprintf(seedLine, sizeof(seedLine), "SEND %s", strainNames[sendHashStrain]);
+    drawButton(191, 112, 96, 26, seedLine,
+               hashReady ? ACCENT_DARK : PANEL_LIGHT,
+               hashReady ? TFT_WHITE : TEXT_DIM);
     char ownedVal[12];
     snprintf(ownedVal, sizeof(ownedVal), "x%u", pestDefenseKits);
     drawSendCard(5, 146, 100, 34, "PEST +1", ownedVal,
@@ -5823,39 +5818,39 @@ void handleNearbyTouch(int x, int y) {
       render();
       return;
     }
-    // Arrows on the seeds card pick the strain; card taps ask to send.
-    if (y >= 75 && y < 94 && x >= 116 && x < 170) {
-      sendSeedStrain = nextCatalogStrain(sendSeedStrain, x < 142 ? -1 : 1);
+    // Big arrows pick the strain; the SEND button is separate from them.
+    if (y >= 70 && y < 104) {
+      if (x < 39) {
+        sendSeedStrain = nextCatalogStrain(sendSeedStrain, -1);
+      } else if (x >= 281) {
+        sendSeedStrain = nextCatalogStrain(sendSeedStrain, 1);
+      } else if (selectedNearbyPeerValid() &&
+                 seedsByStrain[sendSeedStrain] >= 4) {
+        sendConfirmItem = 1;
+      }
       render();
       return;
     }
-    if (y >= 70 && y < 104) {
-      if (selectedNearbyPeerValid() && seedsByStrain[sendSeedStrain] >= 4) {
-        sendConfirmItem = 1;
-        render();
-      }
-      return;
-    }
     if (y >= 108 && y < 142) {
-      // Left half: flower jar; right half: hash jar. Arrow strips cycle the
-      // strain, tapping the rest of the card arms the confirm panel.
+      // Left half: flower jar; right half: hash jar.
       if (x < 160) {
-        if (y < 128 && x >= 112) {
-          sendStashStrain = nextCatalogStrain(sendStashStrain, x < 132 ? -1 : 1);
-          render();
+        if (x < 33) {
+          sendStashStrain = nextCatalogStrain(sendStashStrain, -1);
+        } else if (x >= 129) {
+          sendStashStrain = nextCatalogStrain(sendStashStrain, 1);
         } else if (selectedNearbyPeerValid() && stashByStrain[sendStashStrain] > 0) {
           sendConfirmItem = 5;
-          render();
         }
       } else {
-        if (y < 128 && x >= 272) {
-          sendHashStrain = nextCatalogStrain(sendHashStrain, x < 292 ? -1 : 1);
-          render();
+        if (x < 191) {
+          sendHashStrain = nextCatalogStrain(sendHashStrain, -1);
+        } else if (x >= 287) {
+          sendHashStrain = nextCatalogStrain(sendHashStrain, 1);
         } else if (selectedNearbyPeerValid() && hashByStrain[sendHashStrain] > 0) {
           sendConfirmItem = 6;
-          render();
         }
       }
+      render();
       return;
     }
     if (y >= 146 && y < 180) {
@@ -7088,7 +7083,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: frame buffer + smoke break on stash\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: frame buffer + big send arrows\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
