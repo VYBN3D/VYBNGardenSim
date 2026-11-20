@@ -502,7 +502,9 @@ inline int scaleR(int r) { return r; }
 struct GameCanvas {
   TFT_eSPI *tft;
   operator TFT_eSPI*() { return tft; }  // lets TFT_eSprite bind to the panel
-  void fillScreen(uint16_t c) { tft->fillScreen(c); }
+  // NB: tft->fillScreen() can use inherited bounds that don't match the
+  // buffer size on some builds - fill via the scaled path instead.
+  void fillScreen(uint16_t c) { fillRect(0, 0, SCREEN_W, SCREEN_H, c); }
   void fillRect(int x, int y, int w, int h, uint16_t c) {
     tft->fillRect(SX(x), SY(y), SWD(x, w), SHD(y, h), c);
   }

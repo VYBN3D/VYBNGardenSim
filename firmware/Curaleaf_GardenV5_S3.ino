@@ -500,7 +500,9 @@ inline int scaleR(int r) { return (r * 17 + 6) / 12; }  // ~1.417x radius
 struct GameCanvas {
   TFT_eSPI *tft;
   operator TFT_eSPI*() { return tft; }  // lets TFT_eSprite bind to the panel
-  void fillScreen(uint16_t c) { tft->fillScreen(c); }
+  // NB: tft->fillScreen() uses the sprite's inherited 320x480 bounds and
+  // would wipe only part of the 480-wide buffer - fill via the scaled path.
+  void fillScreen(uint16_t c) { fillRect(0, 0, SCREEN_W, SCREEN_H, c); }
   void fillRect(int x, int y, int w, int h, uint16_t c) {
     tft->fillRect(SX(x), SY(y), SWD(x, w), SHD(y, h), c);
   }
