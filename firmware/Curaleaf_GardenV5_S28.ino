@@ -414,7 +414,7 @@ void waitForCutsceneContinue();
 void drawSettingsRow(int y, const char *label, const char *value);
 
 // Firmware identity, shown in the boot log and on the Options page.
-#define FW_VERSION "v32"
+#define FW_VERSION "v33"
 #define FW_BOARD    "S28"
 #define FW_DATE    "Nov 19"
 #define FW_VERSION_FULL FW_VERSION "-" FW_BOARD
@@ -4064,7 +4064,7 @@ void render(bool presentNow) {
       int16_t scrollMax = 0;   // hub fits on one screen now; keep scroll at 0
       if (settingsScroll < 0) settingsScroll = 0;
       if (settingsScroll > scrollMax) settingsScroll = scrollMax;
-      game.fillRect(0, HEADER_H, SCREEN_W, SCREEN_H - HEADER_H, BG);
+      game.fillScreen(BG);   // full wipe: no stale content behind any page
       switch (page) {
         case OPTIONS: drawOptionsPage(); break;
         case GROWER_MENU: drawGrowerMenuPage(); break;
@@ -4076,7 +4076,7 @@ void render(bool presentNow) {
     } else {
       // Keep the persistent header and navigation from being cleared on every
       // button press. Page changes redraw only the central content area.
-      game.fillRect(0, HEADER_H, SCREEN_W, NAV_Y - HEADER_H, BG);
+      game.fillScreen(BG);   // full wipe: no stale content behind any page
       drawHeader();
       switch (page) {
         case GARDEN: drawGardenPage(); break;
@@ -6883,6 +6883,7 @@ void sleepUntilBootWake() {
       delay(20);
     }
     if (digitalRead(BOOT_BUTTON_PIN) == LOW) break;   // BOOT = wake up for real
+    harvestLedOff();  // unplugged mid-charge: LED dark while light-sleeping
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
     esp_sleep_enable_timer_wakeup(10000000ULL);       // re-check USB every 10 s
     esp_light_sleep_start();
@@ -7083,7 +7084,7 @@ void setup() {
 #endif
   Serial.println();
 #if defined(S3_CYD)
-  Serial.printf("[BUILD] %s: frame buffer + big send arrows\n", FW_VERSION_FULL);
+  Serial.printf("[BUILD] %s: sleep LED off + clean page wipes\n", FW_VERSION_FULL);
 #else
   Serial.println("[BUILD] v9: pedro + giant card select + sd installer + easy-first catalog");
 #endif
