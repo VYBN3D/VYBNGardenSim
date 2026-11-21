@@ -1390,7 +1390,7 @@ if (typeof exports === 'object' && typeof module === 'object') {
 
 </script>
 <script>
-// WinFlorida Garden Sim — WASM runtime loader.
+// VYBN Garden Sim — WASM runtime loader.
 // Runs the REAL firmware (compiled from the sketch) against browser HAL.
 let sim = null, blitDirty = true, runStarted = false;
 const PANEL_W = 480, PANEL_H = 320;
@@ -1460,7 +1460,7 @@ function startAudio() {
 window.addEventListener('pointerdown', startAudio, { once: false });
 
 // ---- NVS (Preferences) → localStorage ----
-const NVS_KEY = 'wfg-nvs-v42-S3';
+const NVS_KEY = 'vybn-nvs-v44-S3';
 let nvs = {};
 try { nvs = JSON.parse(localStorage.getItem(NVS_KEY) || '{}'); } catch (e) { nvs = {}; }
 // One-time: raise stored music volume to the new 100% default (old builds shipped 40).
@@ -1708,7 +1708,7 @@ createGardenSim({
   try { const r = M._main(); if (r && r.catch) r.catch(e => { logErr('MAIN ABORT', e); }); runStarted = true; }
   catch (e) { logErr('crash', e); }
   // landing-page version badges (the sim's own OTA screen does the real check)
-  fetch('https://github.com/VYBN3D/WinFloridaGardenSim/releases/latest/download/version.txt')
+  fetch('https://github.com/VYBN3D/VYBNGardenSim/releases/latest/download/version.txt')
     .then(r => r.ok ? r.text() : Promise.reject())
     .then(t => {
       const v = t.trim();
