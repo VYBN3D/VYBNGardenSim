@@ -11,8 +11,27 @@ Three boards. One firmware family. Everything below is live in the latest
 
 ---
 
+## 🌐 Play it in your browser (web emulator)
+
+You don't need a board to try the game: the **web edition** runs the real
+`VYBNGardenSim_S3.ino` firmware compiled to WebAssembly with a tiny
+board-HAL shim (ILI9488 panel → canvas, FT6336 touch → pointer events,
+ES8311/I2S audio → WebAudio, NVS → localStorage, BOOT → button):
+
+**https://vybn3d.github.io/VYBNGardenSim/**
+
+- Full playthrough: boot splash → grower pick → intro cutscene → seed
+  catalog → buy → plant → live garden with the real-time grow clock.
+- Touch the screen like the panel, press **BOOT** like the board; your crop
+  keeps growing after you close the tab (localStorage save).
+- Fullscreen mode with a floating ✕ EXIT pill; page gestures are locked
+  while fullscreen so phones can't scroll or zoom by accident.
+
+---
+
 ## 📑 Contents
 
+- [Play it in your browser (web emulator)](#-play-it-in-your-browser-web-emulator)
 - [About the game](#about-the-game)
 - [Supported boards](#supported-boards)
 - [Installing / updating](#installing--updating)
