@@ -6,22 +6,22 @@
 <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="pragma" content="no-cache">
 <meta http-equiv="expires" content="0">
-<title>WinFlorida Garden Sim — ESP32-S3 Web Emulator</title>
+<title>VYBN Garden Sim — ESP32-S3 Web Emulator</title>
 <style>
-:root{--bg:#07110c;--panel:#0d1a12;--card:#12201680;--line:#1e3527;--txt:#cfe6d4;--dim:#6f9480;--acc:#46d47e;--gold:#f3c53d;--red:#e05555}
+:root{--bg:#09090b;--panel:#101012;--card:#14141680;--line:#26262b;--txt:#ececee;--dim:#8a8a92;--acc:#ffffff;--gold:#d8d8dc;--red:#e05555}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
 body{overflow-x:hidden}
-a{color:var(--acc)}
+a{color:var(--txt);text-decoration-color:#555}
 /* ---------- top bar ---------- */
-.top{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#07110cf2;backdrop-filter:blur(8px);z-index:5}
+.top{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#09090bf2;backdrop-filter:blur(8px);z-index:5}
 .top .leaf{width:26px;height:26px;image-rendering:pixelated}
-.top h1{font-size:15px;margin:0;letter-spacing:2px;color:#eafff0}
+.top h1{font-size:15px;margin:0;letter-spacing:2px;color:#fff}
 .top .ver{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid var(--line);padding:4px 10px;border-radius:20px}
-.top .ver b{color:var(--acc)}
+.top .ver b{color:#fff}
 /* ---------- hero ---------- */
 .hero{max-width:1060px;margin:0 auto;padding:34px 18px 10px;text-align:center}
-.hero h2{font-size:clamp(22px,5vw,40px);margin:0 0 8px;letter-spacing:3px;color:#eafff0}
+.hero h2{font-size:clamp(22px,5vw,40px);margin:0 0 8px;letter-spacing:3px;color:#fff}
 .hero p{color:var(--dim);font-size:13px;line-height:1.7;margin:0 auto 24px;max-width:640px}
 /* ---------- device ---------- */
 .deviceWrap{display:flex;justify-content:center;padding:10px 0 30px}
@@ -31,12 +31,12 @@ a{color:var(--acc)}
   box-shadow:0 40px 80px -24px #000, inset 0 1px 0 #ffffff18, inset 0 -3px 8px #0009, inset 0 3px 8px #00000055}
 .screenFrame{position:relative;background:#000;border-radius:14px;padding:0;overflow:hidden;
   border:10px solid #0a0d0f;
-  box-shadow:inset 0 0 0 1px #ffffff10, 0 0 30px #46d47e12, inset 0 2px 10px #000}
+  box-shadow:inset 0 0 0 1px #ffffff12, 0 0 34px #ffffff0d, inset 0 2px 10px #000}
 canvas#screen{display:block;width:100%;height:auto;image-rendering:pixelated;background:#000}
 .caseRow{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:0 6px}
 .caseBrand{font-size:9px;letter-spacing:2px;color:#5d6a72;user-select:none}
 .bootBtn{border:1px solid #454d54;background:radial-gradient(circle at 35% 25%,#2c333a,#171c20);
-  color:#aeb8bf;font-family:inherit;font-size:10px;letter-spacing:1.5px;padding:9px 20px;border-radius:18px;
+  color:#cfcfd4;font-family:inherit;font-size:10px;letter-spacing:1.5px;padding:9px 20px;border-radius:18px;
   cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation;
   box-shadow:0 2px 6px #0009, inset 0 1px 0 #ffffff14}
 .bootBtn:active{background:#2c333a;color:#fff;transform:translateY(1px)}
@@ -56,10 +56,10 @@ canvas#screen{display:block;width:100%;height:auto;image-rendering:pixelated;bac
 .card .pill{display:inline-block;font-size:9px;border:1px solid var(--line);border-radius:10px;padding:1px 8px;margin:6px 6px 0 0;color:var(--acc)}
 table.strains{width:100%;border-collapse:collapse;font-size:11px}
 table.strains th{color:var(--dim);text-align:left;font-weight:normal;border-bottom:1px solid var(--line);padding:6px 8px;letter-spacing:1px}
-table.strains td{padding:6px 8px;border-bottom:1px solid #16281c;color:var(--dim)}
+table.strains td{padding:6px 8px;border-bottom:1px solid #1b1b1f;color:var(--dim)}
 table.strains td:first-child{color:var(--txt)}
 table.strains td .d{font-size:9px;border-radius:8px;padding:1px 7px;border:1px solid var(--line)}
-.d.E{color:#7fdc9c}.d.M{color:var(--gold)}.d.H{color:#e8a355}.d.X{color:var(--red)}
+.d.E{color:#fff}.d.M{color:#d8d8dc}.d.H{color:#b8b8be}.d.X{color:#8a8a92}
 /* ---------- fullscreen mode ---------- */
 .device.fs{position:fixed;inset:0;width:100vw;height:100vh;z-index:99;border-radius:0;border:none;
   padding:0;background:#000;max-width:none;display:flex;align-items:center;justify-content:center}
@@ -72,7 +72,7 @@ table.strains td .d{font-size:9px;border-radius:8px;padding:1px 7px;border:1px s
 .device:fullscreen #screen{width:auto;height:100%;max-width:100vw;max-height:100vh}
 .device:fullscreen .caseRow{display:none}
 .fsBtn{border:1px solid #454d54;background:radial-gradient(circle at 35% 25%,#2c333a,#171c20);
-  color:#aeb8bf;font-family:inherit;font-size:10px;letter-spacing:1.5px;padding:9px 16px;border-radius:18px;
+  color:#cfcfd4;font-family:inherit;font-size:10px;letter-spacing:1.5px;padding:9px 16px;border-radius:18px;
   cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:manipulation;
   box-shadow:0 2px 6px #0009, inset 0 1px 0 #ffffff14}
 .fsBtn:active{transform:translateY(1px);color:#fff}
@@ -87,7 +87,7 @@ table.strains td .d{font-size:9px;border-radius:8px;padding:1px 7px;border:1px s
 .device.fs .fsExit,.device:fullscreen .fsExit{display:block}
 /* first-tap sound hint: browsers block all audio until the user interacts */
 .sndHint{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:110;
-  background:#000000c9;color:#ffd76a;border:1px solid #ffd76a55;font-family:inherit;font-size:10px;
+  background:#000000d9;color:#fff;border:1px solid #ffffff44;font-family:inherit;font-size:10px;
   letter-spacing:1.5px;padding:9px 14px;border-radius:16px;pointer-events:none;
   animation:sndPulse 1.8s ease-in-out infinite}
 @keyframes sndPulse{0%,100%{opacity:.85}50%{opacity:.45}}
@@ -100,25 +100,25 @@ footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var
 
 <div class="top">
   <canvas class="leaf" id="leafCv" width="24" height="24"></canvas>
-  <h1>WIN FLORIDA&nbsp;GARDEN&nbsp;SIM</h1>
-  <div class="ver" id="verBadge">WEB BUILD <b id="verNum">v42-S3</b></div>
+  <h1>VYBN&nbsp;GARDEN&nbsp;SIM</h1>
+  <div class="ver" id="verBadge">WEB BUILD <b id="verNum">v44-S3</b></div>
 </div>
 
 <div class="hero">
   <h2>THE GROW ROOM,<br>IN YOUR BROWSER</h2>
-  <p>A full emulator of the WinFlorida ESP32-S3 grow board. The screen below runs the same
+  <p>A full emulator of the VYBN ESP32-S3 grow board. The screen below runs the same
   vector art, the same bitmap fonts and the same real-time grow clock as the firmware —
-  touch it like the panel, press <b style="color:#9fd4b4">BOOT</b> like the board. Your crop
+  touch it like the panel, press <b style="color:#fff">BOOT</b> like the board. Your crop
   grows in real time and keeps growing after you close the tab.</p>
 
   <div class="deviceWrap">
     <div class="device" id="device">
       <div class="screenFrame"><canvas id="screen" width="480" height="320"></canvas></div>
       <button class="fsExit" id="fsExit" aria-label="Exit fullscreen">✕&nbsp;EXIT</button>
-      <div class="sndHint" id="sndHint">♪ TAP ANYWHERE FOR SOUND</div>
+      <div class="sndHint" id="sndHint">TAP TO PLAY</div>
       <div class="caseRow">
         <button class="fsBtn" id="fsBtn">⛶ FULLSCREEN</button>
-        <div class="caseBrand">WINFLORIDA GARDEN SIM</div>
+        <div class="caseBrand">VYBN GARDEN SIM</div>
         <button class="bootBtn" id="bootBtn">BOOT</button>
       </div>
     </div>
@@ -193,8 +193,8 @@ footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var
 
   <h3>ABOUT THIS BUILD</h3>
   <div class="cards">
-    <div class="card"><h4>WHAT IT IS</h4><p>A browser port of the WinFlorida ESP32-S3 firmware
-    (<b id="aboutVer">v42-S3</b>): 480×320 panel, S3 wrapper geometry (×1.5 / ×1.33), the exact
+    <div class="card"><h4>WHAT IT IS</h4><p>A browser port of the VYBN ESP32-S3 firmware
+    (<b id="aboutVer">v44-S3</b>): 480×320 panel, S3 wrapper geometry (×1.5 / ×1.33), the exact
     TFT_eSPI bitmap fonts (5×7 GLCD, 16px, 26px RLE), the leaf logo mask, the plant art pipeline and
     the IMA-ADPCM soundtrack decoded live to WebAudio.</p></div>
     <div class="card"><h4>HARDWARE ↔ WEB</h4><p>ILI9488 panel → canvas · FT6206 touch → touch events ·
@@ -204,8 +204,8 @@ footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var
 </div>
 
 <footer>
-  WIN FLORIDA GARDEN SIM · WEB EDITION · built from the
-  <a href="https://github.com/VYBN3D/WinFloridaGardenSim">WinFloridaGardenSim</a> firmware<br>
+  VYBN GARDEN SIM · WEB EDITION · built from the
+  <a href="https://github.com/VYBN3D/VYBNGardenSim">VYBNGardenSim</a> firmware<br>
   boards OTA-update over the air; this page updates by reloading after a release.
 </footer>
 
@@ -1568,15 +1568,19 @@ function rafLoop() {
 }
 requestAnimationFrame(rafLoop);
 
-// ---- hero leaf + version badge ----
-const LEAF = new Uint8Array([0,0,0,0,0,0,0,127,128,1,255,224,7,128,120,14,0,28,28,0,12,24,0,192,56,31,192,48,120,128,48,193,128,49,129,128,49,1,128,49,33,0,50,67,0,26,198,0,24,140,0,28,248,12,13,240,28,3,0,120,7,255,224,14,127,128,0,0,0,0,0,0]);
-(function heroLeaf() {
+// ---- VYBN logo masks (from the firmware: VYBNGardenSim_S3.ino) ----
+const VYBN_MARK = new Uint8Array([0x00,0x1f,0xf8,0x00,0x7f,0xf8,0x01,0xfe,0x1e,0x03,0xe0,0x0f,0x07,0xc0,0x03,0x0f,0x80,0x03,0x0f,0x00,0x03,0x1e,0x00,0x06,0x1c,0x3e,0x18,0x38,0x7e,0x30,0x38,0x6e,0x60,0x30,0xfc,0xc0,0x30,0x79,0x80,0x30,0x03,0x00,0x18,0x06,0x00,0x0c,0x0c,0x00,0x06,0x38,0x00,0x03,0x70,0x00,0x01,0xc0,0x00,0x01,0x80,0x00,0x03,0x00,0x00,0x06,0x00,0x00,0x0c,0x00,0x00,0x18,0x00,0x00]);     // 24x24 eye mark, 9 bytes/row
+const VYBN_SCRIPT = new Uint8Array([0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x60,0x00,0x00,0x00,0x00,0x0c,0xe0,0x00,0x00,0x00,0x00,0x0c,0xc0,0x00,0x00,0x00,0x00,0x0c,0xc0,0x00,0x00,0x81,0x88,0x19,0xc0,0x00,0x00,0xc1,0x8c,0x39,0x80,0x00,0x00,0xc1,0x8c,0x33,0x80,0x00,0x00,0xe1,0x1c,0x73,0x00,0x00,0x00,0x63,0x18,0x67,0x00,0x00,0x00,0x63,0x18,0xe7,0x1c,0x00,0x00,0x63,0x18,0xcf,0xff,0x80,0x00,0x63,0x19,0x8f,0x81,0xfe,0x3e,0x33,0x19,0x9e,0x07,0xc3,0xf3,0x33,0x1b,0x1c,0x1e,0x41,0xc3,0x33,0x1b,0x18,0x38,0x43,0x83,0x33,0x1e,0x30,0xf0,0xc3,0x03,0x33,0x3e,0x31,0xf0,0xc6,0x07,0x1b,0x3c,0x63,0xf1,0x86,0x06,0x1f,0x3c,0x6e,0x61,0x80,0x0c,0x1e,0x3c,0xdc,0xe3,0x00,0x00,0x1e,0x18,0xff,0xc3,0x00,0x00,0x0e,0x18,0xf3,0xc6,0x00,0x00,0x0e,0x31,0xe1,0x8c,0x00,0x00,0x0e,0x31,0xc0,0x1c,0x00,0x00,0x0e,0x63,0x80,0x38,0x00,0x00,0x06,0x67,0x00,0x70,0x00,0x00,0x02,0x63,0x00,0xe0,0x00,0x00,0x00,0xc1,0x81,0xc0,0x00,0x00,0x00,0xc1,0x87,0x00,0x00,0x00,0x00,0xc1,0xfe,0x00,0x00,0x00,0x01,0x80,0xf8,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,0x03,0x80,0x00,0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,0x00,0x03,0x00,0x00,0x00,0x00,0x00,0x01,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00]); // 48x48 full script, 6 bytes/row
+(function heroVYBN() {
   const cv = document.getElementById('leafCv');
   if (!cv) return;
+  cv.width = 24; cv.height = 24;
   const lc = cv.getContext('2d');
-  lc.fillStyle = '#46d47e';
-  for (let r = 0; r < 24; r++) for (let c = 0; c < 24; c++)
-    if (LEAF[(r * 24 + c) >> 3] & (0x80 >> ((r * 24 + c) & 7))) lc.fillRect(c, r, 1, 1);
+  lc.fillStyle = '#ffffff';
+  for (let r = 0; r < 24; r++) for (let c = 0; c < 24; c++) {
+    const i = r * 9 + (c >> 3);
+    if (VYBN_MARK[i] & (0x80 >> (c & 7))) lc.fillRect(c, r, 1, 1);
+  }
 })();
 
 // ---- strain catalog table (exact firmware data) ----
