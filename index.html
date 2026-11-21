@@ -6,7 +6,7 @@
 <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="pragma" content="no-cache">
 <meta http-equiv="expires" content="0">
-<title>VYBN Garden Sim — ESP32-S3 Web Emulator</title>
+<title>WinFlorida Garden Sim — ESP32-S3 Web Emulator</title>
 <style>
 :root{--bg:#07110c;--panel:#0d1a12;--card:#12201680;--line:#1e3527;--txt:#cfe6d4;--dim:#6f9480;--acc:#46d47e;--gold:#f3c53d;--red:#e05555}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -85,6 +85,13 @@ table.strains td .d{font-size:9px;border-radius:8px;padding:1px 7px;border:1px s
   box-shadow:0 2px 8px #000a}
 .fsExit:active{color:#fff}
 .device.fs .fsExit,.device:fullscreen .fsExit{display:block}
+/* first-tap sound hint: browsers block all audio until the user interacts */
+.sndHint{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;z-index:110;
+  background:#000000c9;color:#ffd76a;border:1px solid #ffd76a55;font-family:inherit;font-size:10px;
+  letter-spacing:1.5px;padding:9px 14px;border-radius:16px;pointer-events:none;
+  animation:sndPulse 1.8s ease-in-out infinite}
+@keyframes sndPulse{0%,100%{opacity:.85}50%{opacity:.45}}
+.sndHint.gone{display:none}
 
 footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var(--dim);font-size:10.5px;line-height:1.8}
 </style>
@@ -93,13 +100,13 @@ footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var
 
 <div class="top">
   <canvas class="leaf" id="leafCv" width="24" height="24"></canvas>
-  <h1>VYBN&nbsp;GARDEN&nbsp;SIM</h1>
-  <div class="ver" id="verBadge">WEB BUILD <b id="verNum">v44-S3</b></div>
+  <h1>WIN FLORIDA&nbsp;GARDEN&nbsp;SIM</h1>
+  <div class="ver" id="verBadge">WEB BUILD <b id="verNum">v42-S3</b></div>
 </div>
 
 <div class="hero">
   <h2>THE GROW ROOM,<br>IN YOUR BROWSER</h2>
-  <p>A full emulator of the VYBN ESP32-S3 grow board. The screen below runs the same
+  <p>A full emulator of the WinFlorida ESP32-S3 grow board. The screen below runs the same
   vector art, the same bitmap fonts and the same real-time grow clock as the firmware —
   touch it like the panel, press <b style="color:#9fd4b4">BOOT</b> like the board. Your crop
   grows in real time and keeps growing after you close the tab.</p>
@@ -108,9 +115,10 @@ footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var
     <div class="device" id="device">
       <div class="screenFrame"><canvas id="screen" width="480" height="320"></canvas></div>
       <button class="fsExit" id="fsExit" aria-label="Exit fullscreen">✕&nbsp;EXIT</button>
+      <div class="sndHint" id="sndHint">♪ TAP ANYWHERE FOR SOUND</div>
       <div class="caseRow">
         <button class="fsBtn" id="fsBtn">⛶ FULLSCREEN</button>
-        <div class="caseBrand">VYBN GARDEN SIM</div>
+        <div class="caseBrand">WINFLORIDA GARDEN SIM</div>
         <button class="bootBtn" id="bootBtn">BOOT</button>
       </div>
     </div>
@@ -185,8 +193,8 @@ footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var
 
   <h3>ABOUT THIS BUILD</h3>
   <div class="cards">
-    <div class="card"><h4>WHAT IT IS</h4><p>A browser port of the VYBN ESP32-S3 firmware
-    (<b id="aboutVer">v44-S3</b>): 480×320 panel, S3 wrapper geometry (×1.5 / ×1.33), the exact
+    <div class="card"><h4>WHAT IT IS</h4><p>A browser port of the WinFlorida ESP32-S3 firmware
+    (<b id="aboutVer">v42-S3</b>): 480×320 panel, S3 wrapper geometry (×1.5 / ×1.33), the exact
     TFT_eSPI bitmap fonts (5×7 GLCD, 16px, 26px RLE), the leaf logo mask, the plant art pipeline and
     the IMA-ADPCM soundtrack decoded live to WebAudio.</p></div>
     <div class="card"><h4>HARDWARE ↔ WEB</h4><p>ILI9488 panel → canvas · FT6206 touch → touch events ·
@@ -196,8 +204,8 @@ footer{border-top:1px solid var(--line);padding:18px;text-align:center;color:var
 </div>
 
 <footer>
-  VYBN GARDEN SIM · WEB EDITION · built from the
-  <a href="https://github.com/VYBN3D/VYBNGardenSim">VYBNGardenSim</a> firmware<br>
+  WIN FLORIDA GARDEN SIM · WEB EDITION · built from the
+  <a href="https://github.com/VYBN3D/WinFloridaGardenSim">WinFloridaGardenSim</a> firmware<br>
   boards OTA-update over the air; this page updates by reloading after a release.
 </footer>
 
@@ -1452,11 +1460,16 @@ function startAudio() {
 window.addEventListener('pointerdown', startAudio, { once: false });
 
 // ---- NVS (Preferences) → localStorage ----
-const NVS_KEY = 'vybn-nvs-v44-S3';
+const NVS_KEY = 'wfg-nvs-v42-S3';
 let nvs = {};
 try { nvs = JSON.parse(localStorage.getItem(NVS_KEY) || '{}'); } catch (e) { nvs = {}; }
 // One-time: raise stored music volume to the new 100% default (old builds shipped 40).
 try {
+  if (!localStorage.getItem('vybn-mvol-100-v2')) {
+    // second pass: saves made before the volume change keep mvol 40 — raise them
+    if (typeof nvs.mvol === 'number' && nvs.mvol < 100) nvs.mvol = 100;
+    localStorage.setItem('vybn-mvol-100-v2', '1');
+  }
   if (!localStorage.getItem('vybn-mvol-migrated')) {
     if (typeof nvs.mvol === 'number' && nvs.mvol < 100) nvs.mvol = 100;
     localStorage.setItem('vybn-mvol-migrated', '1');
@@ -1646,6 +1659,14 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 // ---- boot the firmware ----
+// Sound hint: browsers can't start audio before the first user gesture; hide
+// the pill the moment audio actually starts.
+const sndHint = document.getElementById('sndHint');
+if (sndHint) {
+  const hideHint = () => { sndHint.classList.add('gone'); window.removeEventListener('pointerdown', hideHint, true); };
+  window.addEventListener('pointerdown', hideHint, true);
+}
+
 createGardenSim({
   locateFile: f => f + '?b=' + Date.now(),   // never serve a stale wasm from cache
   gardenDirty: true,
