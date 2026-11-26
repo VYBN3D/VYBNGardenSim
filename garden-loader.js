@@ -419,6 +419,7 @@ function isFs() { return (document.fullscreenElement === device) || device.class
 // the fullscreen view otherwise (iOS Safari especially). Block all gestures.
 let fsGestureBlock = null;
 function fsLockOn() {
+  document.body.classList.add('gardenFullscreen'); // Suppress page overlays during iOS pseudo-fullscreen.
   document.documentElement.style.overflow = 'hidden';
   document.body.style.overflow = 'hidden';
   const stop = e => { e.preventDefault(); };
@@ -428,6 +429,7 @@ function fsLockOn() {
   fsGestureBlock = stop;
 }
 function fsLockOff() {
+  document.body.classList.remove('gardenFullscreen');
   document.documentElement.style.overflow = '';
   document.body.style.overflow = '';
   if (fsGestureBlock) {
